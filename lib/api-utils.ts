@@ -11,11 +11,13 @@ import type { ApiResponse } from './types';
 // ─────────────────────────────────────────────
 export function successResponse<T>(
   data: T,
-  meta?: { total?: number; page?: number; limit?: number }
+  meta?: { total?: number; page?: number; limit?: number },
+  message?: string
 ): NextResponse<ApiResponse<T>> {
   return NextResponse.json({
     success: true,
     data,
+    message,
     meta,
   });
 }
@@ -152,4 +154,20 @@ export function generateOrderNumber(): string {
   const day = now.getDate().toString().padStart(2, '0');
   const random = Math.random().toString(36).substring(2, 8).toUpperCase();
   return `ORD-${year}${month}${day}-${random}`;
+}
+
+// ─────────────────────────────────────────────
+// ALIASES FOR CONVENIENCE
+// ─────────────────────────────────────────────
+export const apiResponse = successResponse;
+export const apiError = errorResponse;
+
+export function getPaginationParams(searchParams: URLSearchParams) {
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+  const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '50')));
+  const offset = (page - 1) * limit;
+  const sortBy = searchParams.get('sort_by') || 'id';
+  const sortOrder = searchParams.get('sort_order') === 'desc' ? 'DESC' : 'ASC';
+  
+  return { page, limit, offset, sortBy, sortOrder };
 }
