@@ -1,0 +1,56 @@
+' ============================================================================
+' ORDER FORM SHEET EVENT CODE
+' ============================================================================
+' INSTALLATION:
+' 1. In VBA Editor (Alt+F11), find "Order Form" under Microsoft Excel Objects
+' 2. Double-click "Order Form"
+' 3. Paste ALL of this code there
+' 4. Save and close
+' ============================================================================
+
+Option Explicit
+
+Private Sub Worksheet_Change(ByVal Target As Range)
+    ' Handles dropdown selections and auto-fills related fields
+    
+    On Error Resume Next
+    
+    ' Only process single cell changes
+    If Target.Cells.Count > 1 Then Exit Sub
+    
+    Application.EnableEvents = False
+    
+    ' Check what was changed
+    Select Case Target.Address
+        Case "$E$6"
+            ' Category dropdown changed
+            Call UpdateItemDropdowns
+            
+        Case "$E$9"
+            ' Site dropdown changed
+            Call OnSiteSelected
+            
+        Case Else
+            ' Check if it's an item cell (column B, rows 17-36)
+            If Target.Column = 2 And Target.row >= 17 And Target.row <= 36 Then
+                Call OnItemSelected(Target.row)
+            End If
+    End Select
+    
+    Application.EnableEvents = True
+End Sub
+
+Private Sub Worksheet_Activate()
+    ' When the sheet is activated, ensure dropdowns are set up
+    
+    On Error Resume Next
+    
+    ' Check if setup is complete
+    Dim cacheSheet As Worksheet
+    Set cacheSheet = ThisWorkbook.Sheets("DataCache")
+    
+    If cacheSheet Is Nothing Then
+        MsgBox "Setup not complete. Please run FirstTimeSetup macro." & vbCrLf & vbCrLf & _
+               "Press Alt+F8, select FirstTimeSetup, click Run.", vbExclamation, "Setup Required"
+    End If
+End Sub
