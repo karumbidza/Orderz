@@ -8,15 +8,15 @@ export const dynamic = 'force-dynamic';
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
-    // Create warehouse if not exists
+    // Create warehouse if not exists (use HEAD-OFFICE as per schema)
     await sql`
-      INSERT INTO warehouses (code, name, location, is_active)
-      VALUES ('MAIN', 'Main Warehouse', 'Harare', true)
+      INSERT INTO warehouses (code, name, address, is_active)
+      VALUES ('HEAD-OFFICE', 'Head Office Warehouse', 'Redan Head Office, Harare', true)
       ON CONFLICT (code) DO NOTHING
     `;
 
     // Get warehouse ID
-    const warehouse = await sql`SELECT id FROM warehouses WHERE code = 'MAIN' LIMIT 1`;
+    const warehouse = await sql`SELECT id FROM warehouses WHERE code = 'HEAD-OFFICE' LIMIT 1`;
     
     if (warehouse.length === 0) {
       return NextResponse.json({ success: false, error: 'Failed to create warehouse' }, { status: 500 });
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ 
       success: true, 
-      message: `Stock initialized. Warehouse: MAIN, Items with stock records: ${result.length}`,
+      message: `Stock initialized. Warehouse: HEAD-OFFICE, Items with stock records: ${result.length}`,
       warehouse_id: warehouseId
     });
 
