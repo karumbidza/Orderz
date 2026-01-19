@@ -73,9 +73,9 @@ export async function GET(request: NextRequest) {
       RECEIVED: 0,
     };
     
-    statusCounts.forEach((row: { status: string; count: number }) => {
-      counts[row.status] = row.count;
-    });
+    for (const row of statusCounts) {
+      counts[row.status as string] = row.count as number;
+    }
     
     return Response.json({
       success: true,

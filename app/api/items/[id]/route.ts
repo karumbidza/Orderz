@@ -59,9 +59,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       updates.push('sku');
       values.sku = validated.sku;
     }
-    if (validated.category !== undefined) {
-      updates.push('category');
-      values.category = validated.category;
+    if (validated.category_id !== undefined) {
+      updates.push('category_id');
+      values.category_id = validated.category_id;
     }
     if (validated.product !== undefined) {
       updates.push('product');
@@ -92,11 +92,21 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return errorResponse('No valid fields to update', 400);
     }
     
+    // Get category name if category_id was provided
+    let categoryName: string | null = null;
+    if (validated.category_id !== undefined) {
+      const catResult = await sql`SELECT name FROM categories WHERE id = ${validated.category_id}`;
+      if (catResult.length > 0) {
+        categoryName = catResult[0].name as string;
+      }
+    }
+    
     // Execute update with all possible fields
     const result = await sql`
       UPDATE items SET
         sku = COALESCE(${validated.sku}, sku),
-        category = COALESCE(${validated.category}, category),
+        category = COALESCE(${categoryName}, category),
+        category_id = COALESCE(${validated.category_id}, category_id),
         product = COALESCE(${validated.product}, product),
         role = COALESCE(${validated.role}, role),
         size = COALESCE(${validated.size}, size),
