@@ -108,7 +108,12 @@ export function sanitizeSortColumn(table: string, column: string): string {
 // ERROR HANDLING
 // ─────────────────────────────────────────────
 export function handleApiError(error: unknown): NextResponse<ApiResponse<null>> {
-  console.error('API Error:', error);
+  // Safe error logging
+  try {
+    console.error('API Error:', String(error));
+  } catch {
+    console.error('API Error occurred (could not stringify)');
+  }
   
   if (error instanceof ZodError) {
     return validationErrorResponse(error);

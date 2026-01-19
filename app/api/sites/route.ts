@@ -20,15 +20,14 @@ export async function GET(request: NextRequest) {
     const params = getSearchParams(request);
     
     const pagination = PaginationSchema.parse({
-      page: params.get('page'),
-      limit: params.get('limit'),
-      sort_by: params.get('sort_by'),
-      sort_order: params.get('sort_order'),
+      page: params.get('page') || undefined,
+      limit: params.get('limit') || undefined,
+      sort_by: params.get('sort_by') || undefined,
+      sort_order: params.get('sort_order') || undefined,
     });
     
     const search = params.get('search');
     const offset = (pagination.page - 1) * pagination.limit;
-    const sortCol = sanitizeSortColumn('sites', pagination.sort_by || 'code');
     
     let sites: Site[];
     let totalResult: { count: number }[];
@@ -38,7 +37,7 @@ export async function GET(request: NextRequest) {
         SELECT * FROM sites 
         WHERE is_active = true 
           AND (name ILIKE ${'%' + search + '%'} OR code ILIKE ${'%' + search + '%'})
-        ORDER BY ${sql(sortCol)} ${sql(pagination.sort_order === 'desc' ? 'DESC' : 'ASC')}
+        ORDER BY name ASC
         LIMIT ${pagination.limit} OFFSET ${offset}
       ` as Site[];
       
@@ -51,7 +50,7 @@ export async function GET(request: NextRequest) {
       sites = await sql`
         SELECT * FROM sites 
         WHERE is_active = true
-        ORDER BY ${sql(sortCol)} ${sql(pagination.sort_order === 'desc' ? 'DESC' : 'ASC')}
+        ORDER BY name ASC
         LIMIT ${pagination.limit} OFFSET ${offset}
       ` as Site[];
       

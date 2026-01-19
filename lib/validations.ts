@@ -10,7 +10,7 @@ import { z } from 'zod';
 // ─────────────────────────────────────────────
 export const ItemCreateSchema = z.object({
   sku: z.string().min(1).max(50),
-  category: z.string().min(1).max(100),
+  category_id: z.number().int().positive('Category is required'),
   product: z.string().min(1).max(255),
   role: z.string().max(100).nullable().optional(),
   size: z.string().max(50).nullable().optional(),
@@ -115,10 +115,10 @@ export const OrderItemBatchSchema = z.object({
 // PAGINATION & FILTERS
 // ─────────────────────────────────────────────
 export const PaginationSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(500).default(50),
-  sort_by: z.string().optional(),
-  sort_order: z.enum(['asc', 'desc']).default('asc'),
+  page: z.coerce.number().int().min(1).default(1).catch(1),
+  limit: z.coerce.number().int().min(1).max(500).default(50).catch(50),
+  sort_by: z.string().optional().default('id'),
+  sort_order: z.enum(['asc', 'desc']).optional().default('asc'),
 });
 
 export const ItemFilterSchema = z.object({

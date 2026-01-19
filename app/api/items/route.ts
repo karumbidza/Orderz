@@ -19,22 +19,21 @@ export async function GET(request: NextRequest) {
   try {
     const params = getSearchParams(request);
     
-    // Parse pagination
+    // Parse pagination - use || undefined to convert null to undefined for Zod
     const pagination = PaginationSchema.parse({
-      page: params.get('page'),
-      limit: params.get('limit'),
-      sort_by: params.get('sort_by'),
-      sort_order: params.get('sort_order'),
+      page: params.get('page') || undefined,
+      limit: params.get('limit') || undefined,
+      sort_by: params.get('sort_by') || undefined,
+      sort_order: params.get('sort_order') || undefined,
     });
     
     // Parse filters
     const filters = ItemFilterSchema.parse({
-      category: params.get('category'),
-      search: params.get('search'),
+      category: params.get('category') || undefined,
+      search: params.get('search') || undefined,
     });
     
     const offset = (pagination.page - 1) * pagination.limit;
-    const sortCol = sanitizeSortColumn('items', pagination.sort_by || 'id');
     
     // Build query with filters
     let items: Item[];
@@ -46,7 +45,7 @@ export async function GET(request: NextRequest) {
         WHERE is_active = true 
           AND category = ${filters.category}
           AND (product ILIKE ${'%' + filters.search + '%'} OR sku ILIKE ${'%' + filters.search + '%'})
-        ORDER BY ${sql(sortCol)} ${sql(pagination.sort_order === 'desc' ? 'DESC' : 'ASC')}
+        ORDER BY id ASC
         LIMIT ${pagination.limit} OFFSET ${offset}
       ` as Item[];
       
@@ -60,7 +59,7 @@ export async function GET(request: NextRequest) {
       items = await sql`
         SELECT * FROM items 
         WHERE is_active = true AND category = ${filters.category}
-        ORDER BY ${sql(sortCol)} ${sql(pagination.sort_order === 'desc' ? 'DESC' : 'ASC')}
+        ORDER BY product ASC
         LIMIT ${pagination.limit} OFFSET ${offset}
       ` as Item[];
       
@@ -73,7 +72,7 @@ export async function GET(request: NextRequest) {
         SELECT * FROM items 
         WHERE is_active = true 
           AND (product ILIKE ${'%' + filters.search + '%'} OR sku ILIKE ${'%' + filters.search + '%'})
-        ORDER BY ${sql(sortCol)} ${sql(pagination.sort_order === 'desc' ? 'DESC' : 'ASC')}
+        ORDER BY id ASC
         LIMIT ${pagination.limit} OFFSET ${offset}
       ` as Item[];
       
@@ -86,7 +85,7 @@ export async function GET(request: NextRequest) {
       items = await sql`
         SELECT * FROM items 
         WHERE is_active = true
-        ORDER BY ${sql(sortCol)} ${sql(pagination.sort_order === 'desc' ? 'DESC' : 'ASC')}
+        ORDER BY category, product ASC
         LIMIT ${pagination.limit} OFFSET ${offset}
       ` as Item[];
       
@@ -113,11 +112,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = ItemCreateSchema.parse(body);
     
+    // Get category name from categories table
+    const categoryResult = await sql`
+      SELECT name FROM categories WHERE id = ${validated.category_id} AND is_active = true
+    `;
+    
+    if (categoryResult.length === 0) {
+      return errorResponse('Invalid category. Please select a valid category.', 400);
+    }
+    
+    const categoryName = categoryResult[0].name;
+    
     const result = await sql`
-      INSERT INTO items (sku, category, product, role, size, variant, unit, cost)
+      INSERT INTO items (sku, category, category_id, product, role, size, variant, unit, cost)
       VALUES (
         ${validated.sku},
-        ${validated.category},
+        ${categoryName},
+        ${validated.category_id},
         ${validated.product},
         ${validated.role || null},
         ${validated.size || null},

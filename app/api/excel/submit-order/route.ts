@@ -3,147 +3,238 @@ import { sql } from '@/lib/db';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
-import { successResponse, errorResponse, handleApiError, generateOrderNumber } from '@/lib/api-utils';
+export const revalidate = 0;
 
-// Schema for Excel order submission
-const ExcelOrderSchema = z.object({
-  site_code: z.string().min(1),
-  warehouse_code: z.string().min(1),
-  ordered_by: z.string().optional(),
+// Validation schema for order submission from Excel
+const OrderItemSchema = z.object({
+  item_id: z.number().int().positive(),
+  sku: z.string(),
+  item_name: z.string(),
+  size: z.string().optional().nullable(),
+  quantity: z.number().int().positive(),
+  unit_cost: z.number().min(0),
+  line_total: z.number().min(0),
+});
+
+const OrderSubmitSchema = z.object({
+  site_id: z.number().int().positive(),
+  site_name: z.string(),
+  category: z.string().min(1),
+  requested_by: z.string().optional(),
   notes: z.string().optional(),
-  items: z.array(z.object({
-    sku: z.string().min(1),
-    quantity: z.number().int().positive(),
-    notes: z.string().optional(),
-  })).min(1),
-  submit: z.boolean().default(false), // If true, set status to PENDING
+  total_amount: z.number().min(0),
+  items: z.array(OrderItemSchema).min(1, 'At least one item is required'),
 });
 
 // ─────────────────────────────────────────────
+// Helper: Generate voucher number atomically
+// ─────────────────────────────────────────────
+async function generateVoucherNumber(prefix: string = 'RV'): Promise<string> {
+  const year = new Date().getFullYear();
+  
+  // Atomic increment - handles concurrent users safely
+  const result = await sql`
+    INSERT INTO voucher_sequences (prefix, year, last_number)
+    VALUES (${prefix}, ${year}, 1)
+    ON CONFLICT (prefix, year) 
+    DO UPDATE SET 
+      last_number = voucher_sequences.last_number + 1,
+      updated_at = NOW()
+    RETURNING last_number
+  `;
+  
+  const sequence = result[0].last_number;
+  return `${prefix}-${year}-${String(sequence).padStart(4, '0')}`;
+}
+
+// ─────────────────────────────────────────────
 // POST /api/excel/submit-order - Submit order from Excel
-// Simplified endpoint that uses codes instead of IDs
+// Voucher number is generated server-side (atomic, no conflicts)
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const validated = ExcelOrderSchema.parse(body);
+    const validated = OrderSubmitSchema.parse(body);
     
-    // Lookup site
-    const siteResult = await sql`
-      SELECT id FROM sites WHERE code = ${validated.site_code} AND is_active = true
-    ` as { id: number }[];
+    // Generate voucher number atomically (handles concurrent users)
+    const voucherNumber = await generateVoucherNumber('RV');
     
-    if (siteResult.length === 0) {
-      return errorResponse(`Site not found: ${validated.site_code}`, 400);
-    }
-    const siteId = siteResult[0].id;
-    
-    // Lookup warehouse
-    const warehouseResult = await sql`
-      SELECT id FROM warehouses WHERE code = ${validated.warehouse_code} AND is_active = true
-    ` as { id: number }[];
-    
-    if (warehouseResult.length === 0) {
-      return errorResponse(`Warehouse not found: ${validated.warehouse_code}`, 400);
-    }
-    const warehouseId = warehouseResult[0].id;
-    
-    // Lookup all items by SKU
-    const skus = validated.items.map(i => i.sku);
-    const itemsResult = await sql`
-      SELECT id, sku, cost FROM items 
-      WHERE sku = ANY(${skus}) AND is_active = true
-    ` as { id: number; sku: string; cost: number }[];
-    
-    const itemMap = new Map(itemsResult.map(i => [i.sku, i]));
-    
-    // Validate all SKUs exist
-    const missingSKUs = validated.items
-      .filter(i => !itemMap.has(i.sku))
-      .map(i => i.sku);
-    
-    if (missingSKUs.length > 0) {
-      return errorResponse(`Items not found: ${missingSKUs.join(', ')}`, 400);
-    }
-    
-    // Create order
-    const orderNumber = generateOrderNumber();
-    const status = validated.submit ? 'PENDING' : 'DRAFT';
-    
+    // Create the order
     const orderResult = await sql`
-      INSERT INTO orders (order_number, site_id, warehouse_id, ordered_by, notes, status)
-      VALUES (
-        ${orderNumber},
-        ${siteId},
-        ${warehouseId},
-        ${validated.ordered_by || null},
+      INSERT INTO orders (
+        voucher_number,
+        site_id,
+        category,
+        requested_by,
+        notes,
+        total_amount,
+        status,
+        order_date,
+        created_at
+      ) VALUES (
+        ${voucherNumber},
+        ${validated.site_id},
+        ${validated.category},
+        ${validated.requested_by || null},
         ${validated.notes || null},
-        ${status}::order_status
+        ${validated.total_amount},
+        'PENDING',
+        NOW(),
+        NOW()
       )
-      RETURNING id, order_number, status
-    ` as { id: number; order_number: string; status: string }[];
+      RETURNING id, voucher_number, status, order_date
+    `;
     
     const orderId = orderResult[0].id;
     
-    // Add order items
-    const addedItems = [];
-    const warnings = [];
-    
+    // Insert order items
     for (const item of validated.items) {
-      const itemData = itemMap.get(item.sku)!;
-      
-      // Check stock availability
-      const stockResult = await sql`
-        SELECT quantity FROM stock_levels
-        WHERE item_id = ${itemData.id} AND warehouse_id = ${warehouseId}
-      ` as { quantity: number }[];
-      
-      const available = stockResult.length > 0 ? stockResult[0].quantity : 0;
-      
-      if (available < item.quantity) {
-        warnings.push({
-          sku: item.sku,
-          requested: item.quantity,
-          available,
-          message: `Insufficient stock: ${available} available, ${item.quantity} requested`,
-        });
-      }
-      
-      // Insert order item
       await sql`
-        INSERT INTO order_items (order_id, item_id, quantity_ordered, unit_cost, notes)
-        VALUES (
+        INSERT INTO order_items (
+          order_id,
+          item_id,
+          sku,
+          item_name,
+          size,
+          qty_requested,
+          unit_cost,
+          line_total
+        ) VALUES (
           ${orderId},
-          ${itemData.id},
+          ${item.item_id},
+          ${item.sku},
+          ${item.item_name},
+          ${item.size || null},
           ${item.quantity},
-          ${itemData.cost},
-          ${item.notes || null}
+          ${item.unit_cost},
+          ${item.line_total}
         )
       `;
-      
-      addedItems.push({
-        sku: item.sku,
-        quantity: item.quantity,
-        unit_cost: itemData.cost,
-        line_total: item.quantity * itemData.cost,
-      });
     }
     
-    // Calculate order total
-    const totalValue = addedItems.reduce((sum, i) => sum + i.line_total, 0);
+    return Response.json({
+      success: true,
+      data: {
+        order_id: orderId,
+        voucher_number: voucherNumber,
+        status: 'PENDING',
+        items_count: validated.items.length,
+        total_amount: validated.total_amount,
+        message: 'Order submitted successfully',
+      }
+    }, { status: 201 });
     
-    return successResponse({
-      order_id: orderId,
-      order_number: orderResult[0].order_number,
-      status: orderResult[0].status,
-      site_code: validated.site_code,
-      warehouse_code: validated.warehouse_code,
-      items: addedItems,
-      total_items: addedItems.length,
-      total_value: totalValue,
-      warnings: warnings.length > 0 ? warnings : undefined,
-    });
   } catch (error) {
-    return handleApiError(error);
+    if (error instanceof z.ZodError) {
+      return Response.json({
+        success: false,
+        error: 'Validation error',
+        details: error.errors,
+      }, { status: 400 });
+    }
+    
+    console.error('Error submitting order:', error);
+    return Response.json({
+      success: false,
+      error: 'Failed to submit order',
+    }, { status: 500 });
+  }
+}
+
+// ─────────────────────────────────────────────
+// GET /api/excel/submit-order - Get orders for R.V Summary
+// ─────────────────────────────────────────────
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status');
+    const site_id = searchParams.get('site_id');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    
+    let orders;
+    
+    if (status && site_id) {
+      orders = await sql`
+        SELECT 
+          o.id,
+          o.voucher_number,
+          o.category,
+          o.status,
+          o.total_amount,
+          o.order_date,
+          o.dispatched_at,
+          o.dispatched_by,
+          o.received_at,
+          o.received_by,
+          o.requested_by,
+          s.name as site_name,
+          s.site_code
+        FROM orders o
+        JOIN sites s ON o.site_id = s.id
+        WHERE o.status = ${status} AND o.site_id = ${parseInt(site_id)}
+        ORDER BY o.order_date DESC
+        LIMIT ${limit}
+      `;
+    } else if (status) {
+      orders = await sql`
+        SELECT 
+          o.id,
+          o.voucher_number,
+          o.category,
+          o.status,
+          o.total_amount,
+          o.order_date,
+          o.dispatched_at,
+          o.dispatched_by,
+          o.received_at,
+          o.received_by,
+          o.requested_by,
+          s.name as site_name,
+          s.site_code
+        FROM orders o
+        JOIN sites s ON o.site_id = s.id
+        WHERE o.status = ${status}
+        ORDER BY o.order_date DESC
+        LIMIT ${limit}
+      `;
+    } else {
+      orders = await sql`
+        SELECT 
+          o.id,
+          o.voucher_number,
+          o.category,
+          o.status,
+          o.total_amount,
+          o.order_date,
+          o.dispatched_at,
+          o.dispatched_by,
+          o.received_at,
+          o.received_by,
+          o.requested_by,
+          s.name as site_name,
+          s.site_code
+        FROM orders o
+        JOIN sites s ON o.site_id = s.id
+        ORDER BY o.order_date DESC
+        LIMIT ${limit}
+      `;
+    }
+    
+    return Response.json({
+      success: true,
+      data: orders,
+      total: orders.length,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error fetching orders:', error);
+    return Response.json({
+      success: false,
+      error: 'Failed to fetch orders',
+    }, { status: 500 });
   }
 }
