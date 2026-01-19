@@ -119,13 +119,22 @@ export async function GET(request: NextRequest) {
     }
     
     // Get unique products for dropdown
-    const products = await sql`
-      SELECT DISTINCT product 
-      FROM items 
-      WHERE is_active = true 
-        ${category ? sql`AND category = ${category}` : sql``}
-      ORDER BY product
-    `;
+    let products;
+    if (category) {
+      products = await sql`
+        SELECT DISTINCT product 
+        FROM items 
+        WHERE is_active = true AND category = ${category}
+        ORDER BY product
+      `;
+    } else {
+      products = await sql`
+        SELECT DISTINCT product 
+        FROM items 
+        WHERE is_active = true
+        ORDER BY product
+      `;
+    }
     
     // Get unique sizes for the product (if specified)
     let sizes: string[] = [];
