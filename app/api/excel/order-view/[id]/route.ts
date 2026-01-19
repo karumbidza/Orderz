@@ -178,7 +178,7 @@ export async function GET(
   
   <div class="footer">
     <p>Generated on ${new Date().toLocaleString()}</p>
-    <p>Redan Petroleum Order Management System</p>
+    <p>Redan Coupon Order Management System</p>
   </div>
 </body>
 </html>
