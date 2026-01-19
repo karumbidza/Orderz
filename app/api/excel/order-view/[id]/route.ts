@@ -110,7 +110,7 @@ export async function GET(
   </div>
 
   <div class="header">
-    <h1>REDAN PETROLEUM</h1>
+    <h1>REDAN COUPON</h1>
     <h2>Request Voucher - ${order.voucher_number}</h2>
   </div>
   
