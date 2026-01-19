@@ -11,19 +11,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const warehouse_id = searchParams.get('warehouse_id');
     const category = searchParams.get('category');
-    const low_stock = searchParams.get('low_stock') === 'true';
 
     let stockData;
     
     if (warehouse_id && category) {
       stockData = await sql`
         SELECT 
-          sl.id as stock_id,
           sl.item_id,
           sl.warehouse_id,
-          sl.quantity,
-          sl.min_quantity,
-          sl.max_quantity,
+          sl.quantity_on_hand,
+          sl.last_updated,
           i.sku,
           i.product,
           i.category,
@@ -34,7 +31,7 @@ export async function GET(request: NextRequest) {
           i.is_active,
           w.code as warehouse_code,
           w.name as warehouse_name,
-          (sl.quantity * i.cost::numeric) as stock_value
+          (sl.quantity_on_hand * i.cost::numeric) as stock_value
         FROM stock_levels sl
         JOIN items i ON sl.item_id = i.id
         JOIN warehouses w ON sl.warehouse_id = w.id
@@ -45,12 +42,10 @@ export async function GET(request: NextRequest) {
     } else if (warehouse_id) {
       stockData = await sql`
         SELECT 
-          sl.id as stock_id,
           sl.item_id,
           sl.warehouse_id,
-          sl.quantity,
-          sl.min_quantity,
-          sl.max_quantity,
+          sl.quantity_on_hand,
+          sl.last_updated,
           i.sku,
           i.product,
           i.category,
@@ -61,48 +56,20 @@ export async function GET(request: NextRequest) {
           i.is_active,
           w.code as warehouse_code,
           w.name as warehouse_name,
-          (sl.quantity * i.cost::numeric) as stock_value
+          (sl.quantity_on_hand * i.cost::numeric) as stock_value
         FROM stock_levels sl
         JOIN items i ON sl.item_id = i.id
         JOIN warehouses w ON sl.warehouse_id = w.id
         WHERE sl.warehouse_id = ${warehouse_id}
         ORDER BY i.category, i.product, i.role, i.size
       `;
-    } else if (low_stock) {
-      stockData = await sql`
-        SELECT 
-          sl.id as stock_id,
-          sl.item_id,
-          sl.warehouse_id,
-          sl.quantity,
-          sl.min_quantity,
-          sl.max_quantity,
-          i.sku,
-          i.product,
-          i.category,
-          i.role,
-          i.size,
-          i.unit,
-          i.cost,
-          i.is_active,
-          w.code as warehouse_code,
-          w.name as warehouse_name,
-          (sl.quantity * i.cost::numeric) as stock_value
-        FROM stock_levels sl
-        JOIN items i ON sl.item_id = i.id
-        JOIN warehouses w ON sl.warehouse_id = w.id
-        WHERE sl.quantity <= sl.min_quantity
-        ORDER BY (sl.min_quantity - sl.quantity) DESC, i.product
-      `;
     } else {
       stockData = await sql`
         SELECT 
-          sl.id as stock_id,
           sl.item_id,
           sl.warehouse_id,
-          sl.quantity,
-          sl.min_quantity,
-          sl.max_quantity,
+          sl.quantity_on_hand,
+          sl.last_updated,
           i.sku,
           i.product,
           i.category,
@@ -113,7 +80,7 @@ export async function GET(request: NextRequest) {
           i.is_active,
           w.code as warehouse_code,
           w.name as warehouse_name,
-          (sl.quantity * i.cost::numeric) as stock_value
+          (sl.quantity_on_hand * i.cost::numeric) as stock_value
         FROM stock_levels sl
         JOIN items i ON sl.item_id = i.id
         JOIN warehouses w ON sl.warehouse_id = w.id
@@ -142,7 +109,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { item_id, warehouse_id, quantity, notes, created_by } = body;
+    const { item_id, warehouse_id, quantity, reason } = body;
 
     if (!item_id || !warehouse_id || !quantity || quantity <= 0) {
       return NextResponse.json({ 
@@ -158,25 +125,25 @@ export async function POST(request: NextRequest) {
       // Create stock movement record
       const movement = await sql`
         INSERT INTO stock_movements 
-          (item_id, warehouse_id, movement_type, quantity, reference_type, notes, created_by)
+          (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
         VALUES 
-          (${item_id}, ${warehouse_id}, 'IN', ${quantity}, 'manual_add', ${notes || null}, ${created_by || 'Admin'})
+          (${item_id}, ${warehouse_id}, 'IN', ${quantity}, 'manual_add', ${reason || 'Stock added'}, NOW())
         RETURNING id, item_id, quantity
       `;
 
       // Update or insert stock level
       await sql`
-        INSERT INTO stock_levels (item_id, warehouse_id, quantity)
-        VALUES (${item_id}, ${warehouse_id}, ${quantity})
+        INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
+        VALUES (${item_id}, ${warehouse_id}, ${quantity}, NOW())
         ON CONFLICT (item_id, warehouse_id) 
         DO UPDATE SET 
-          quantity = stock_levels.quantity + ${quantity},
-          updated_at = NOW()
+          quantity_on_hand = stock_levels.quantity_on_hand + ${quantity},
+          last_updated = NOW()
       `;
 
       // Get updated stock level
       const stockLevel = await sql`
-        SELECT sl.quantity, i.sku, i.product, w.name as warehouse_name
+        SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
         FROM stock_levels sl
         JOIN items i ON sl.item_id = i.id
         JOIN warehouses w ON sl.warehouse_id = w.id
@@ -187,9 +154,9 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ 
         success: true, 
-        message: `Added ${quantity} units. New stock: ${stockLevel[0].quantity}`,
+        message: `Added ${quantity} units. New stock: ${stockLevel[0].quantity_on_hand}`,
         movement_id: movement[0].id,
-        new_quantity: stockLevel[0].quantity
+        new_quantity: stockLevel[0].quantity_on_hand
       });
 
     } catch (err) {
@@ -212,7 +179,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { item_id, warehouse_id, quantity, notes, created_by } = body;
+    const { item_id, warehouse_id, quantity, reason } = body;
 
     if (!item_id || !warehouse_id || !quantity || quantity <= 0) {
       return NextResponse.json({ 
@@ -223,7 +190,7 @@ export async function PATCH(request: NextRequest) {
 
     // Check current stock
     const currentStock = await sql`
-      SELECT quantity FROM stock_levels 
+      SELECT quantity_on_hand FROM stock_levels 
       WHERE item_id = ${item_id} AND warehouse_id = ${warehouse_id}
     `;
 
@@ -234,10 +201,10 @@ export async function PATCH(request: NextRequest) {
       }, { status: 404 });
     }
 
-    if (currentStock[0].quantity < quantity) {
+    if (currentStock[0].quantity_on_hand < quantity) {
       return NextResponse.json({ 
         success: false, 
-        error: `Insufficient stock. Available: ${currentStock[0].quantity}, Requested: ${quantity}` 
+        error: `Insufficient stock. Available: ${currentStock[0].quantity_on_hand}, Requested: ${quantity}` 
       }, { status: 400 });
     }
 
@@ -248,22 +215,22 @@ export async function PATCH(request: NextRequest) {
       // Create stock movement record
       const movement = await sql`
         INSERT INTO stock_movements 
-          (item_id, warehouse_id, movement_type, quantity, reference_type, notes, created_by)
+          (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
         VALUES 
-          (${item_id}, ${warehouse_id}, 'OUT', ${quantity}, 'manual_dispatch', ${notes || null}, ${created_by || 'Admin'})
+          (${item_id}, ${warehouse_id}, 'OUT', ${quantity}, 'manual_dispatch', ${reason || 'Stock dispatched'}, NOW())
         RETURNING id, item_id, quantity
       `;
 
       // Update stock level
       await sql`
         UPDATE stock_levels 
-        SET quantity = quantity - ${quantity}, updated_at = NOW()
+        SET quantity_on_hand = quantity_on_hand - ${quantity}, last_updated = NOW()
         WHERE item_id = ${item_id} AND warehouse_id = ${warehouse_id}
       `;
 
       // Get updated stock level
       const stockLevel = await sql`
-        SELECT sl.quantity, i.sku, i.product, w.name as warehouse_name
+        SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
         FROM stock_levels sl
         JOIN items i ON sl.item_id = i.id
         JOIN warehouses w ON sl.warehouse_id = w.id
@@ -274,9 +241,9 @@ export async function PATCH(request: NextRequest) {
 
       return NextResponse.json({ 
         success: true, 
-        message: `Dispatched ${quantity} units. New stock: ${stockLevel[0].quantity}`,
+        message: `Dispatched ${quantity} units. New stock: ${stockLevel[0].quantity_on_hand}`,
         movement_id: movement[0].id,
-        new_quantity: stockLevel[0].quantity
+        new_quantity: stockLevel[0].quantity_on_hand
       });
 
     } catch (err) {
