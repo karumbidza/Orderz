@@ -5,15 +5,14 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // ─────────────────────────────────────────────
-// GET /api/excel/catalog - Complete item catalog with stock for Excel
-// Returns items with stock levels, grouped by product for size selection
+// GET /api/excel/catalog - Complete item catalog for Excel
+// Returns items grouped by product for size selection
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const product = searchParams.get('product');
-    const warehouseId = searchParams.get('warehouse_id') || '1'; // Default warehouse
     
     let items;
     
@@ -21,27 +20,21 @@ export async function GET(request: NextRequest) {
       // Get all variants (sizes) for a specific product
       items = await sql`
         SELECT 
-          i.id,
-          i.sku,
-          i.category,
-          i.product,
-          COALESCE(i.role, '') as role,
-          COALESCE(i.size, '') as size,
-          COALESCE(i.variant, '') as variant,
-          i.unit,
-          i.cost::float as cost,
-          COALESCE(sl.quantity, 0)::int as stock_qty,
-          CASE 
-            WHEN COALESCE(sl.quantity, 0) > 0 THEN true 
-            ELSE false 
-          END as in_stock
-        FROM items i
-        LEFT JOIN stock_levels sl ON sl.item_id = i.id AND sl.warehouse_id = ${parseInt(warehouseId)}
-        WHERE i.is_active = true 
-          AND i.category = ${category}
-          AND i.product = ${product}
+          id,
+          sku,
+          category,
+          product,
+          COALESCE(role, '') as role,
+          COALESCE(size, '') as size,
+          COALESCE(variant, '') as variant,
+          unit,
+          cost::float as cost
+        FROM items
+        WHERE is_active = true 
+          AND category = ${category}
+          AND product = ${product}
         ORDER BY 
-          CASE i.size
+          CASE size
             WHEN 'XS' THEN 1
             WHEN 'S' THEN 2
             WHEN 'M' THEN 3
@@ -53,33 +46,27 @@ export async function GET(request: NextRequest) {
             WHEN '3XL' THEN 7
             ELSE 10
           END,
-          i.size,
-          i.sku
+          size,
+          sku
       `;
     } else if (category) {
-      // Get all items for a category with stock
+      // Get all items for a category
       items = await sql`
         SELECT 
-          i.id,
-          i.sku,
-          i.category,
-          i.product,
-          COALESCE(i.role, '') as role,
-          COALESCE(i.size, '') as size,
-          COALESCE(i.variant, '') as variant,
-          i.unit,
-          i.cost::float as cost,
-          COALESCE(sl.quantity, 0)::int as stock_qty,
-          CASE 
-            WHEN COALESCE(sl.quantity, 0) > 0 THEN true 
-            ELSE false 
-          END as in_stock
-        FROM items i
-        LEFT JOIN stock_levels sl ON sl.item_id = i.id AND sl.warehouse_id = ${parseInt(warehouseId)}
-        WHERE i.is_active = true 
-          AND i.category = ${category}
-        ORDER BY i.product, 
-          CASE i.size
+          id,
+          sku,
+          category,
+          product,
+          COALESCE(role, '') as role,
+          COALESCE(size, '') as size,
+          COALESCE(variant, '') as variant,
+          unit,
+          cost::float as cost
+        FROM items
+        WHERE is_active = true 
+          AND category = ${category}
+        ORDER BY product, 
+          CASE size
             WHEN 'XS' THEN 1
             WHEN 'S' THEN 2
             WHEN 'M' THEN 3
@@ -91,30 +78,24 @@ export async function GET(request: NextRequest) {
             WHEN '3XL' THEN 7
             ELSE 10
           END,
-          i.sku
+          sku
       `;
     } else {
-      // Get all items with stock
+      // Get all items
       items = await sql`
         SELECT 
-          i.id,
-          i.sku,
-          i.category,
-          i.product,
-          COALESCE(i.role, '') as role,
-          COALESCE(i.size, '') as size,
-          COALESCE(i.variant, '') as variant,
-          i.unit,
-          i.cost::float as cost,
-          COALESCE(sl.quantity, 0)::int as stock_qty,
-          CASE 
-            WHEN COALESCE(sl.quantity, 0) > 0 THEN true 
-            ELSE false 
-          END as in_stock
-        FROM items i
-        LEFT JOIN stock_levels sl ON sl.item_id = i.id AND sl.warehouse_id = ${parseInt(warehouseId)}
-        WHERE i.is_active = true
-        ORDER BY i.category, i.product, i.sku
+          id,
+          sku,
+          category,
+          product,
+          COALESCE(role, '') as role,
+          COALESCE(size, '') as size,
+          COALESCE(variant, '') as variant,
+          unit,
+          cost::float as cost
+        FROM items
+        WHERE is_active = true
+        ORDER BY category, product, sku
       `;
     }
     
