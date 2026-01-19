@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     const warehouses = await sql`
       SELECT 
-        id, code, name, location, is_active, created_at
+        id, code, name, is_active
       FROM warehouses
       WHERE is_active = true
       ORDER BY code
