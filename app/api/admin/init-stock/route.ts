@@ -10,8 +10,8 @@ export async function POST(request: NextRequest) {
   try {
     // Create warehouse if not exists (use HEAD-OFFICE as per schema)
     await sql`
-      INSERT INTO warehouses (code, name, address, is_active)
-      VALUES ('HEAD-OFFICE', 'Head Office Warehouse', 'Redan Head Office, Harare', true)
+      INSERT INTO warehouses (code, name, is_active)
+      VALUES ('HEAD-OFFICE', 'Head Office Warehouse', true)
       ON CONFLICT (code) DO NOTHING
     `;
 
