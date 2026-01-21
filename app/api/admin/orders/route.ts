@@ -137,3 +137,25 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Failed to update order' }, { status: 500 });
   }
 }
+
+// ─────────────────────────────────────────────
+// DELETE /api/admin/orders - Delete all orders (for testing reset)
+// ─────────────────────────────────────────────
+export async function DELETE(request: NextRequest) {
+  try {
+    // Delete order items first (foreign key constraint)
+    await sql`DELETE FROM order_items`;
+    
+    // Delete all orders
+    const result = await sql`DELETE FROM orders RETURNING id`;
+
+    return NextResponse.json({ 
+      success: true, 
+      message: `Deleted ${result.length} orders. Ready for fresh testing.`
+    });
+
+  } catch (error) {
+    console.error('Error deleting orders:', error);
+    return NextResponse.json({ success: false, error: 'Failed to delete orders: ' + String(error) }, { status: 500 });
+  }
+}
