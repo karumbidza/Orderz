@@ -337,8 +337,7 @@ export async function POST(request: NextRequest) {
     console.error('Error creating order:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Order submission failed',
-      details: String(error)  // Temporarily show error details
+      error: 'Order submission failed'
     }, { status: 500 });
   }
 }
