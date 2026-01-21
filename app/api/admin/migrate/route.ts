@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Migrations completed',
       migrations,
-      current_statuses: statusCheck.map((s: { status: string }) => s.status)
+      current_statuses: statusCheck.map((s: Record<string, any>) => s.status)
     });
 
   } catch (error) {
@@ -71,13 +71,13 @@ export async function GET(request: NextRequest) {
       WHERE table_name = 'orders'
     `;
 
-    const hasQtyDispatched = orderItemsCols.some((c: { column_name: string }) => c.column_name === 'qty_dispatched');
-    const hasAutoReceiveDate = ordersCols.some((c: { column_name: string }) => c.column_name === 'auto_receive_date');
+    const hasQtyDispatched = orderItemsCols.some((c: Record<string, any>) => c.column_name === 'qty_dispatched');
+    const hasAutoReceiveDate = ordersCols.some((c: Record<string, any>) => c.column_name === 'auto_receive_date');
 
     return NextResponse.json({
       success: true,
-      order_items_columns: orderItemsCols.map((c: { column_name: string }) => c.column_name),
-      orders_columns: ordersCols.map((c: { column_name: string }) => c.column_name),
+      order_items_columns: orderItemsCols.map((c: Record<string, any>) => c.column_name),
+      orders_columns: ordersCols.map((c: Record<string, any>) => c.column_name),
       migration_status: {
         qty_dispatched: hasQtyDispatched ? '✅ exists' : '❌ missing',
         auto_receive_date: hasAutoReceiveDate ? '✅ exists' : '❌ missing'
