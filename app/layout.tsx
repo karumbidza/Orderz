@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Orderz API',
-  description: 'Inventory & Ordering System Backend',
+  title: 'Redan Coupon Admin',
+  description: 'Order and Inventory Management System',
 };
 
 export default function RootLayout({
@@ -12,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-slate-50 min-h-screen">{children}</body>
     </html>
   );
 }
