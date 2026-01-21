@@ -422,7 +422,7 @@ export default function AdminPage() {
         {loading ? (
           <div className="text-center py-12 text-slate-500">Loading...</div>
         ) : activeTab === 'orders' ? (
-          <OrdersTable orders={orders} onStatusChange={updateOrderStatus} onViewOrder={viewOrder} />
+          <OrdersTable orders={orders} onViewOrder={viewOrder} />
         ) : (
           <InventoryTable stock={stock} onAction={openStockModal} />
         )}
@@ -712,15 +712,11 @@ export default function AdminPage() {
 
 function OrdersTable({
   orders,
-  onStatusChange,
   onViewOrder,
 }: {
   orders: Order[];
-  onStatusChange: (id: number, status: OrderStatus) => void;
   onViewOrder: (id: number) => void;
 }) {
-  const statuses: OrderStatus[] = ['PENDING', 'PROCESSING', 'DISPATCHED', 'RECEIVED', 'CANCELLED'];
-
   return (
     <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
       <div className="overflow-x-auto">
@@ -733,7 +729,7 @@ function OrdersTable({
               <th className="text-left px-4 py-3 font-medium text-slate-600">Status</th>
               <th className="text-right px-4 py-3 font-medium text-slate-600">Total</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Date</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Actions</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -758,32 +754,12 @@ function OrdersTable({
                   {new Date(order.order_date).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => onViewOrder(order.id)}
-                      className="px-2 py-1 text-xs bg-slate-100 text-slate-700 rounded hover:bg-slate-200 transition-colors"
-                    >
-                      View
-                    </button>
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          onStatusChange(order.id, e.target.value as OrderStatus);
-                        }
-                      }}
-                      className="text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-400"
-                    >
-                      <option value="">Status...</option>
-                      {statuses
-                        .filter((s) => s !== order.status)
-                        .map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
+                  <button
+                    onClick={() => onViewOrder(order.id)}
+                    className="px-3 py-1.5 text-xs bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors"
+                  >
+                    View Order
+                  </button>
                 </td>
               </tr>
             ))}
