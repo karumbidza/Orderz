@@ -139,10 +139,30 @@ export async function PATCH(request: NextRequest) {
 }
 
 // ─────────────────────────────────────────────
-// DELETE /api/admin/orders - Delete all orders (for testing reset)
+// DELETE /api/admin/orders - Delete all orders (PROTECTED - requires admin key + confirmation)
 // ─────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
   try {
+    // SECURITY: Require admin authentication
+    const adminKey = request.headers.get('X-Admin-Key');
+    const validAdminKey = process.env.ADMIN_SECRET_KEY;
+    
+    if (validAdminKey && adminKey !== validAdminKey) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Forbidden: Admin access required' 
+      }, { status: 403 });
+    }
+    
+    // SECURITY: Require confirmation token
+    const body = await request.json().catch(() => ({}));
+    if (body.confirm !== 'DELETE_ALL_ORDERS') {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Must provide { "confirm": "DELETE_ALL_ORDERS" } in request body' 
+      }, { status: 400 });
+    }
+    
     // Delete order items first (foreign key constraint)
     await sql`DELETE FROM order_items`;
     
@@ -156,6 +176,6 @@ export async function DELETE(request: NextRequest) {
 
   } catch (error) {
     console.error('Error deleting orders:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete orders: ' + String(error) }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to delete orders' }, { status: 500 });
   }
 }

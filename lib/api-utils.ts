@@ -54,18 +54,77 @@ export function validateApiKey(request: NextRequest): boolean {
   const apiKey = request.headers.get('X-API-Key');
   const validKey = process.env.API_SECRET_KEY;
   
-  // In development, allow requests without API key
-  if (process.env.NODE_ENV === 'development' && !validKey) {
-    return true;
+  // SECURITY: Require API key in production
+  if (!validKey) {
+    console.error('SECURITY: API_SECRET_KEY not configured');
+    // In development without key configured, allow for testing
+    if (process.env.NODE_ENV === 'development') {
+      return true;
+    }
+    return false;
   }
   
   return apiKey === validKey;
+}
+
+export function validateAdminKey(request: NextRequest): boolean {
+  const adminKey = request.headers.get('X-Admin-Key');
+  const validKey = process.env.ADMIN_SECRET_KEY;
+  
+  // Admin routes require explicit key
+  if (!validKey) {
+    console.error('SECURITY: ADMIN_SECRET_KEY not configured');
+    if (process.env.NODE_ENV === 'development') {
+      return true;
+    }
+    return false;
+  }
+  
+  return adminKey === validKey;
 }
 
 export function requireAuth(request: NextRequest): NextResponse | null {
   if (!validateApiKey(request)) {
     return errorResponse('Unauthorized: Invalid or missing API key', 401);
   }
+  return null;
+}
+
+export function requireAdmin(request: NextRequest): NextResponse | null {
+  if (!validateAdminKey(request)) {
+    return errorResponse('Forbidden: Admin access required', 403);
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────
+// RATE LIMITING (Simple in-memory, use Redis in production)
+// ─────────────────────────────────────────────
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX = 100; // 100 requests per minute
+
+export function checkRateLimit(request: NextRequest): NextResponse | null {
+  const ip = request.headers.get('x-forwarded-for') || 
+             request.headers.get('x-real-ip') || 
+             'unknown';
+  const now = Date.now();
+  
+  const current = rateLimitMap.get(ip);
+  
+  if (!current || now > current.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return null;
+  }
+  
+  if (current.count >= RATE_LIMIT_MAX) {
+    return NextResponse.json(
+      { success: false, error: 'Rate limit exceeded. Try again later.' },
+      { status: 429, headers: { 'Retry-After': '60' } }
+    );
+  }
+  
+  current.count++;
   return null;
 }
 
