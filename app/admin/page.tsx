@@ -19,11 +19,10 @@ interface OrderItem {
   id: number;
   sku: string;
   product: string;
-  category: string;
-  role: string;
-  size: string;
-  unit: string;
+  size: string | null;
+  employee_name: string | null;
   quantity: number;
+  qty_approved: number | null;
   unit_cost: string;
   total_cost: string;
 }
@@ -436,7 +435,7 @@ export default function AdminPage() {
                         <tr key={idx} className="border-b border-slate-100">
                           <td className="px-3 py-2">
                             <div className="font-medium">{item.product}</div>
-                            <div className="text-xs text-slate-400">{item.category} • {item.role}</div>
+                            {item.employee_name && <div className="text-xs text-slate-400">For: {item.employee_name}</div>}
                           </td>
                           <td className="px-3 py-2 font-mono text-xs">{item.sku}</td>
                           <td className="px-3 py-2">{item.size || '-'}</td>
