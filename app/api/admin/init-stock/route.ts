@@ -78,6 +78,12 @@ export async function GET(request: NextRequest) {
       FROM information_schema.columns 
       WHERE table_name = 'order_items'
     `;
+    
+    const ordersInfo = await sql`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'orders'
+    `;
 
     const warehouses = await sql`SELECT * FROM warehouses LIMIT 1`;
     const stockLevels = await sql`SELECT COUNT(*) as count FROM stock_levels`;
@@ -89,7 +95,8 @@ export async function GET(request: NextRequest) {
         warehouses: warehouseInfo.map((c: Record<string, string>) => c.column_name),
         stock_levels: stockInfo.map((c: Record<string, string>) => c.column_name),
         stock_movements: movementInfo.map((c: Record<string, string>) => c.column_name),
-        order_items: orderItemsInfo.map((c: Record<string, string>) => c.column_name)
+        order_items: orderItemsInfo.map((c: Record<string, string>) => c.column_name),
+        orders: ordersInfo.map((c: Record<string, string>) => c.column_name)
       },
       warehouse_sample: warehouses[0] || null,
       stock_records: stockLevels[0].count,
