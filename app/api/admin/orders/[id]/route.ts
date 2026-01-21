@@ -56,7 +56,7 @@ export async function GET(
         oi.item_name as product
       FROM order_items oi
       WHERE oi.order_id = ${orderId}
-      ORDER BY i.category, i.product, i.size
+      ORDER BY oi.item_name, oi.size
     `;
 
     return NextResponse.json({
