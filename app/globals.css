@@ -11,3 +11,52 @@ body {
   background-color: #f8fafc;
   color: #1e293b;
 }
+
+/* Print Styles */
+@media print {
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .print\:hidden {
+    display: none !important;
+  }
+  
+  .print\:bg-white {
+    background: white !important;
+  }
+  
+  .print\:static {
+    position: static !important;
+  }
+  
+  .print\:shadow-none {
+    box-shadow: none !important;
+  }
+  
+  .print\:max-w-none {
+    max-width: none !important;
+  }
+  
+  .print\:max-h-none {
+    max-height: none !important;
+  }
+  
+  .print\:rounded-none {
+    border-radius: 0 !important;
+  }
+  
+  .print\:p-0 {
+    padding: 0 !important;
+  }
+  
+  .print\:p-8 {
+    padding: 2rem !important;
+  }
+  
+  .print\:mb-8 {
+    margin-bottom: 2rem !important;
+  }
+}

@@ -13,6 +13,24 @@ interface Order {
   created_at: string;
 }
 
+interface OrderItem {
+  id: number;
+  sku: string;
+  product: string;
+  category: string;
+  role: string;
+  size: string;
+  unit: string;
+  quantity: number;
+  unit_cost: string;
+  total_cost: string;
+}
+
+interface OrderDetail extends Order {
+  site_code: string;
+  items: OrderItem[];
+}
+
 interface StockItem {
   item_id: number;
   sku: string;
@@ -93,6 +111,37 @@ export default function AdminPage() {
     } catch (err) {
       showMessage('Failed to update status');
     }
+  };
+
+  // ─────────────────────────────────────────
+  // VIEW ORDER MODAL
+  // ─────────────────────────────────────────
+
+  const [orderModal, setOrderModal] = useState<{
+    open: boolean;
+    order: OrderDetail | null;
+    loading: boolean;
+  }>({ open: false, order: null, loading: false });
+
+  const viewOrder = async (orderId: number) => {
+    setOrderModal({ open: true, order: null, loading: true });
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`);
+      const data = await res.json();
+      if (data.success) {
+        setOrderModal({ open: true, order: data.data, loading: false });
+      } else {
+        showMessage('Error loading order details');
+        setOrderModal({ open: false, order: null, loading: false });
+      }
+    } catch (err) {
+      showMessage('Failed to load order');
+      setOrderModal({ open: false, order: null, loading: false });
+    }
+  };
+
+  const printOrder = () => {
+    window.print();
   };
 
   // ─────────────────────────────────────────
@@ -244,11 +293,11 @@ export default function AdminPage() {
       </div>
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-6 py-6">
+      <main className="max-w-7xl mx-auto px-6 py-6 print:hidden">
         {loading ? (
           <div className="text-center py-12 text-slate-500">Loading...</div>
         ) : activeTab === 'orders' ? (
-          <OrdersTable orders={orders} onStatusChange={updateOrderStatus} />
+          <OrdersTable orders={orders} onStatusChange={updateOrderStatus} onViewOrder={viewOrder} />
         ) : (
           <InventoryTable stock={stock} onAction={openStockModal} />
         )}
@@ -295,6 +344,115 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* Order View Modal */}
+      {orderModal.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 print:bg-white print:static">
+          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-auto shadow-xl print:shadow-none print:max-w-none print:max-h-none print:rounded-none">
+            {orderModal.loading ? (
+              <div className="p-12 text-center text-slate-500">Loading order details...</div>
+            ) : orderModal.order ? (
+              <div className="print:p-0">
+                {/* Modal Header - hidden on print */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 print:hidden">
+                  <h3 className="text-lg font-semibold">Order Details</h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={printOrder}
+                      className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800"
+                    >
+                      🖨 Print
+                    </button>
+                    <button
+                      onClick={() => setOrderModal({ open: false, order: null, loading: false })}
+                      className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                {/* Printable Order Content */}
+                <div className="p-6 print:p-8" id="printable-order">
+                  {/* Company Header */}
+                  <div className="text-center mb-6 print:mb-8">
+                    <h1 className="text-2xl font-bold text-slate-900">REDAN COUPON</h1>
+                    <p className="text-sm text-slate-500">Order Voucher</p>
+                  </div>
+
+                  {/* Order Info Grid */}
+                  <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
+                    <div>
+                      <p className="text-slate-500">Order Number</p>
+                      <p className="font-mono font-semibold">{orderModal.order.order_number}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-slate-500">Date</p>
+                      <p className="font-semibold">{new Date(orderModal.order.created_at).toLocaleDateString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Site</p>
+                      <p className="font-semibold">{orderModal.order.site_name}</p>
+                      <p className="text-xs text-slate-400">{orderModal.order.site_code}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-slate-500">City</p>
+                      <p className="font-semibold">{orderModal.order.city}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Status</p>
+                      <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${STATUS_COLORS[orderModal.order.status] || 'bg-slate-100'}`}>
+                        {orderModal.order.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Items Table */}
+                  <table className="w-full text-sm border border-slate-200 mb-6">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="text-left px-3 py-2 border-b">Item</th>
+                        <th className="text-left px-3 py-2 border-b">SKU</th>
+                        <th className="text-left px-3 py-2 border-b">Size</th>
+                        <th className="text-center px-3 py-2 border-b">Qty</th>
+                        <th className="text-right px-3 py-2 border-b">Unit Cost</th>
+                        <th className="text-right px-3 py-2 border-b">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orderModal.order.items?.map((item, idx) => (
+                        <tr key={idx} className="border-b border-slate-100">
+                          <td className="px-3 py-2">
+                            <div className="font-medium">{item.product}</div>
+                            <div className="text-xs text-slate-400">{item.category} • {item.role}</div>
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs">{item.sku}</td>
+                          <td className="px-3 py-2">{item.size || '-'}</td>
+                          <td className="px-3 py-2 text-center">{item.quantity}</td>
+                          <td className="px-3 py-2 text-right">${parseFloat(item.unit_cost).toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right font-medium">${parseFloat(item.total_cost).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-slate-50">
+                      <tr>
+                        <td colSpan={5} className="px-3 py-3 text-right font-semibold">Total Amount:</td>
+                        <td className="px-3 py-3 text-right font-bold text-lg">${parseFloat(orderModal.order.total_amount).toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+
+                  {/* Footer */}
+                  <div className="text-center text-xs text-slate-400 pt-4 border-t border-slate-200">
+                    <p>Thank you for your order</p>
+                    <p>Redan Coupon • Head Office</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -306,9 +464,11 @@ export default function AdminPage() {
 function OrdersTable({
   orders,
   onStatusChange,
+  onViewOrder,
 }: {
   orders: Order[];
   onStatusChange: (id: number, status: OrderStatus) => void;
+  onViewOrder: (id: number) => void;
 }) {
   const statuses: OrderStatus[] = ['PENDING', 'PROCESSING', 'DISPATCHED', 'RECEIVED', 'CANCELLED'];
 
@@ -349,24 +509,32 @@ function OrdersTable({
                   {new Date(order.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3">
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        onStatusChange(order.id, e.target.value as OrderStatus);
-                      }
-                    }}
-                    className="text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-400"
-                  >
-                    <option value="">Change status...</option>
-                    {statuses
-                      .filter((s) => s !== order.status)
-                      .map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onViewOrder(order.id)}
+                      className="px-2 py-1 text-xs bg-slate-100 text-slate-700 rounded hover:bg-slate-200 transition-colors"
+                    >
+                      View
+                    </button>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          onStatusChange(order.id, e.target.value as OrderStatus);
+                        }
+                      }}
+                      className="text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    >
+                      <option value="">Status...</option>
+                      {statuses
+                        .filter((s) => s !== order.status)
+                        .map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
                 </td>
               </tr>
             ))}
