@@ -70,7 +70,19 @@ interface StockItem {
   warehouse_name: string;
 }
 
-type Tab = 'orders' | 'inventory';
+interface StockMovement {
+  id: number;
+  item_id: number;
+  movement_type: 'IN' | 'OUT';
+  quantity: number;
+  reference_type: string;
+  reason: string;
+  created_at: string;
+  sku: string;
+  product: string;
+}
+
+type Tab = 'orders' | 'inventory' | 'history';
 type OrderStatus = 'PENDING' | 'PROCESSING' | 'DISPATCHED' | 'PARTIAL_DISPATCH' | 'RECEIVED' | 'DECLINED' | 'CANCELLED';
 type InventoryCategory = 'all' | 'PPE' | 'Uniforms' | 'Stationery' | 'Consumable';
 
@@ -95,6 +107,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
+  const [stockHistory, setStockHistory] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -102,8 +115,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === 'orders') {
       loadOrders();
-    } else {
+    } else if (activeTab === 'inventory') {
       loadStock();
+    } else if (activeTab === 'history') {
+      loadStockHistory();
     }
   }, [activeTab]);
 
@@ -338,6 +353,85 @@ export default function AdminPage() {
   };
 
   // ─────────────────────────────────────────
+  // STOCK HISTORY
+  // ─────────────────────────────────────────
+
+  const loadStockHistory = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/stock/history?limit=100&days=30');
+      const data = await res.json();
+      if (data.success) {
+        setStockHistory(data.data);
+      } else {
+        showMessage('Error: ' + data.error);
+      }
+    } catch (err) {
+      showMessage('Failed to load stock history');
+    }
+    setLoading(false);
+  };
+
+  // ─────────────────────────────────────────
+  // BULK RECEIVE MODAL
+  // ─────────────────────────────────────────
+
+  const [bulkReceiveModal, setBulkReceiveModal] = useState<{
+    open: boolean;
+    items: { item_id: number; sku: string; product: string; quantity: string }[];
+    grnNumber: string;
+    submitting: boolean;
+  }>({ open: false, items: [], grnNumber: '', submitting: false });
+
+  const openBulkReceiveModal = () => {
+    // Pre-populate with stock items (empty quantities)
+    const items = stock.map(s => ({
+      item_id: s.item_id,
+      sku: s.sku,
+      product: s.product,
+      quantity: ''
+    }));
+    setBulkReceiveModal({ open: true, items, grnNumber: '', submitting: false });
+  };
+
+  const handleBulkReceive = async () => {
+    const itemsToReceive = bulkReceiveModal.items
+      .filter(i => i.quantity && parseInt(i.quantity) > 0)
+      .map(i => ({ item_id: i.item_id, quantity: parseInt(i.quantity) }));
+
+    if (itemsToReceive.length === 0) {
+      showMessage('Enter at least one quantity');
+      return;
+    }
+
+    setBulkReceiveModal({ ...bulkReceiveModal, submitting: true });
+
+    try {
+      const res = await fetch('/api/admin/stock', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: itemsToReceive,
+          warehouse_id: 2,
+          grn_number: bulkReceiveModal.grnNumber || null
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage(data.message);
+        setBulkReceiveModal({ open: false, items: [], grnNumber: '', submitting: false });
+        loadStock();
+      } else {
+        showMessage('Error: ' + data.error);
+        setBulkReceiveModal({ ...bulkReceiveModal, submitting: false });
+      }
+    } catch (err) {
+      showMessage('Failed to bulk receive');
+      setBulkReceiveModal({ ...bulkReceiveModal, submitting: false });
+    }
+  };
+
+  // ─────────────────────────────────────────
   // STOCK ACTION MODAL
   // ─────────────────────────────────────────
 
@@ -413,6 +507,16 @@ export default function AdminPage() {
             >
               Inventory
             </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'history'
+                  ? 'border-slate-900 text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Stock History
+            </button>
           </nav>
         </div>
       </div>
@@ -423,8 +527,21 @@ export default function AdminPage() {
           <div className="text-center py-12 text-slate-500">Loading...</div>
         ) : activeTab === 'orders' ? (
           <OrdersTable orders={orders} onViewOrder={viewOrder} />
+        ) : activeTab === 'inventory' ? (
+          <div>
+            {/* Bulk Receive Button */}
+            <div className="mb-4 flex justify-end">
+              <button
+                onClick={openBulkReceiveModal}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                📦 Bulk Receive Stock
+              </button>
+            </div>
+            <InventoryTable stock={stock} onAction={openStockModal} />
+          </div>
         ) : (
-          <InventoryTable stock={stock} onAction={openStockModal} />
+          <StockHistoryTable history={stockHistory} />
         )}
       </main>
 
@@ -465,6 +582,86 @@ export default function AdminPage() {
               >
                 {stockModal.action === 'add' ? 'Add Stock' : 'Dispatch'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Receive Modal */}
+      {bulkReceiveModal.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto shadow-xl">
+            <div className="px-6 py-4 border-b border-slate-200">
+              <h3 className="text-lg font-semibold">Bulk Receive Stock</h3>
+              <p className="text-sm text-slate-500">Enter quantities received for each item</p>
+            </div>
+            
+            <div className="px-6 py-4">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 mb-1">GRN / Invoice Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. GRN-2026-001"
+                  value={bulkReceiveModal.grnNumber}
+                  onChange={(e) => setBulkReceiveModal({ ...bulkReceiveModal, grnNumber: e.target.value })}
+                  className="w-full max-w-xs border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div className="max-h-96 overflow-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 sticky top-0">
+                    <tr>
+                      <th className="text-left px-4 py-2 font-medium text-slate-600">SKU</th>
+                      <th className="text-left px-4 py-2 font-medium text-slate-600">Product</th>
+                      <th className="text-right px-4 py-2 font-medium text-slate-600 w-32">Qty Received</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {bulkReceiveModal.items.map((item, idx) => (
+                      <tr key={item.item_id}>
+                        <td className="px-4 py-2 font-mono text-xs">{item.sku}</td>
+                        <td className="px-4 py-2">{item.product}</td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const newItems = [...bulkReceiveModal.items];
+                              newItems[idx].quantity = e.target.value;
+                              setBulkReceiveModal({ ...bulkReceiveModal, items: newItems });
+                            }}
+                            className="w-full border border-slate-300 rounded px-3 py-1.5 text-right text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-between items-center">
+              <span className="text-sm text-slate-500">
+                {bulkReceiveModal.items.filter(i => i.quantity && parseInt(i.quantity) > 0).length} items to receive
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setBulkReceiveModal({ open: false, items: [], grnNumber: '', submitting: false })}
+                  className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkReceive}
+                  disabled={bulkReceiveModal.submitting}
+                  className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {bulkReceiveModal.submitting ? 'Processing...' : '📦 Receive Stock'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -906,6 +1103,63 @@ function InventoryTable({
             <div className="text-center py-12 text-slate-500">No items found</div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// STOCK HISTORY TABLE COMPONENT
+// ─────────────────────────────────────────
+
+function StockHistoryTable({ history }: { history: StockMovement[] }) {
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-200">
+        <h3 className="text-lg font-semibold">Stock Movements (Last 30 Days)</h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Date</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">SKU</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Product</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Type</th>
+              <th className="text-right px-4 py-3 font-medium text-slate-600">Qty</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Reason</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {history.map((movement) => (
+              <tr key={movement.id} className="hover:bg-slate-50">
+                <td className="px-4 py-3 text-xs text-slate-500">
+                  {new Date(movement.created_at).toLocaleString()}
+                </td>
+                <td className="px-4 py-3 font-mono text-xs">{movement.sku}</td>
+                <td className="px-4 py-3">{movement.product}</td>
+                <td className="px-4 py-3">
+                  <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
+                    movement.movement_type === 'IN' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-orange-100 text-orange-800'
+                  }`}>
+                    {movement.movement_type}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-right font-medium">
+                  <span className={movement.quantity > 0 ? 'text-green-600' : 'text-orange-600'}>
+                    {movement.quantity > 0 ? '+' : ''}{movement.quantity}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-slate-500 text-xs">{movement.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {history.length === 0 && (
+          <div className="text-center py-12 text-slate-500">No stock movements found</div>
+        )}
       </div>
     </div>
   );

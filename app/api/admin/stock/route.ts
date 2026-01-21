@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
     console.error('Error fetching stock levels:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Failed to fetch stock levels' 
+      error: 'Failed to fetch stock levels: ' + String(error)
     }, { status: 500 });
   }
 }
@@ -118,57 +118,46 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Start transaction
-    await sql`BEGIN`;
+    // Create stock movement record
+    const movement = await sql`
+      INSERT INTO stock_movements 
+        (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
+      VALUES 
+        (${item_id}, ${warehouse_id}, 'IN', ${quantity}, 'MANUAL_ADD', ${reason || 'Stock added via admin'}, NOW())
+      RETURNING id, item_id, quantity
+    `;
 
-    try {
-      // Create stock movement record
-      const movement = await sql`
-        INSERT INTO stock_movements 
-          (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
-        VALUES 
-          (${item_id}, ${warehouse_id}, 'IN', ${quantity}, 'manual_add', ${reason || 'Stock added'}, NOW())
-        RETURNING id, item_id, quantity
-      `;
+    // Update or insert stock level
+    await sql`
+      INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
+      VALUES (${item_id}, ${warehouse_id}, ${quantity}, NOW())
+      ON CONFLICT (item_id, warehouse_id) 
+      DO UPDATE SET 
+        quantity_on_hand = stock_levels.quantity_on_hand + ${quantity},
+        last_updated = NOW()
+    `;
 
-      // Update or insert stock level
-      await sql`
-        INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
-        VALUES (${item_id}, ${warehouse_id}, ${quantity}, NOW())
-        ON CONFLICT (item_id, warehouse_id) 
-        DO UPDATE SET 
-          quantity_on_hand = stock_levels.quantity_on_hand + ${quantity},
-          last_updated = NOW()
-      `;
+    // Get updated stock level
+    const stockLevel = await sql`
+      SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
+      FROM stock_levels sl
+      JOIN items i ON sl.item_id = i.id
+      JOIN warehouses w ON sl.warehouse_id = w.id
+      WHERE sl.item_id = ${item_id} AND sl.warehouse_id = ${warehouse_id}
+    `;
 
-      // Get updated stock level
-      const stockLevel = await sql`
-        SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
-        FROM stock_levels sl
-        JOIN items i ON sl.item_id = i.id
-        JOIN warehouses w ON sl.warehouse_id = w.id
-        WHERE sl.item_id = ${item_id} AND sl.warehouse_id = ${warehouse_id}
-      `;
-
-      await sql`COMMIT`;
-
-      return NextResponse.json({ 
-        success: true, 
-        message: `Added ${quantity} units. New stock: ${stockLevel[0].quantity_on_hand}`,
-        movement_id: movement[0].id,
-        new_quantity: stockLevel[0].quantity_on_hand
-      });
-
-    } catch (err) {
-      await sql`ROLLBACK`;
-      throw err;
-    }
+    return NextResponse.json({ 
+      success: true, 
+      message: `Added ${quantity} units. New stock: ${stockLevel[0]?.quantity_on_hand || quantity}`,
+      movement_id: movement[0].id,
+      new_quantity: stockLevel[0]?.quantity_on_hand || quantity
+    });
 
   } catch (error) {
     console.error('Error adding stock:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Failed to add stock' 
+      error: 'Failed to add stock: ' + String(error)
     }, { status: 500 });
   }
 }
@@ -208,54 +197,112 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Start transaction
-    await sql`BEGIN`;
+    // Create stock movement record
+    const movement = await sql`
+      INSERT INTO stock_movements 
+        (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
+      VALUES 
+        (${item_id}, ${warehouse_id}, 'OUT', ${-quantity}, 'MANUAL_DISPATCH', ${reason || 'Stock dispatched via admin'}, NOW())
+      RETURNING id, item_id, quantity
+    `;
 
-    try {
-      // Create stock movement record
-      const movement = await sql`
-        INSERT INTO stock_movements 
-          (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
-        VALUES 
-          (${item_id}, ${warehouse_id}, 'OUT', ${quantity}, 'manual_dispatch', ${reason || 'Stock dispatched'}, NOW())
-        RETURNING id, item_id, quantity
-      `;
+    // Update stock level
+    await sql`
+      UPDATE stock_levels 
+      SET quantity_on_hand = quantity_on_hand - ${quantity}, last_updated = NOW()
+      WHERE item_id = ${item_id} AND warehouse_id = ${warehouse_id}
+    `;
 
-      // Update stock level
-      await sql`
-        UPDATE stock_levels 
-        SET quantity_on_hand = quantity_on_hand - ${quantity}, last_updated = NOW()
-        WHERE item_id = ${item_id} AND warehouse_id = ${warehouse_id}
-      `;
+    // Get updated stock level
+    const stockLevel = await sql`
+      SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
+      FROM stock_levels sl
+      JOIN items i ON sl.item_id = i.id
+      JOIN warehouses w ON sl.warehouse_id = w.id
+      WHERE sl.item_id = ${item_id} AND sl.warehouse_id = ${warehouse_id}
+    `;
 
-      // Get updated stock level
-      const stockLevel = await sql`
-        SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
-        FROM stock_levels sl
-        JOIN items i ON sl.item_id = i.id
-        JOIN warehouses w ON sl.warehouse_id = w.id
-        WHERE sl.item_id = ${item_id} AND sl.warehouse_id = ${warehouse_id}
-      `;
-
-      await sql`COMMIT`;
-
-      return NextResponse.json({ 
-        success: true, 
-        message: `Dispatched ${quantity} units. New stock: ${stockLevel[0].quantity_on_hand}`,
-        movement_id: movement[0].id,
-        new_quantity: stockLevel[0].quantity_on_hand
-      });
-
-    } catch (err) {
-      await sql`ROLLBACK`;
-      throw err;
-    }
+    return NextResponse.json({ 
+      success: true, 
+      message: `Dispatched ${quantity} units. New stock: ${stockLevel[0].quantity_on_hand}`,
+      movement_id: movement[0].id,
+      new_quantity: stockLevel[0].quantity_on_hand
+    });
 
   } catch (error) {
     console.error('Error dispatching stock:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Failed to dispatch stock' 
+      error: 'Failed to dispatch stock: ' + String(error)
+    }, { status: 500 });
+  }
+}
+
+// ─────────────────────────────────────────────
+// PUT /api/admin/stock - Bulk receive stock
+// Body: { items: [{ item_id, quantity, reason? }], warehouse_id }
+// ─────────────────────────────────────────────
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { items, warehouse_id, grn_number } = body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'items array is required' 
+      }, { status: 400 });
+    }
+
+    const warehouseId = warehouse_id || 2; // Default to Head Office
+    const results: any[] = [];
+    let totalAdded = 0;
+
+    for (const item of items) {
+      if (!item.item_id || !item.quantity || item.quantity <= 0) {
+        results.push({ item_id: item.item_id, success: false, error: 'Invalid item data' });
+        continue;
+      }
+
+      try {
+        // Create stock movement record
+        await sql`
+          INSERT INTO stock_movements 
+            (item_id, warehouse_id, movement_type, quantity, reference_type, reference_id, reason, created_at)
+          VALUES 
+            (${item.item_id}, ${warehouseId}, 'IN', ${item.quantity}, 'BULK_RECEIVE', ${grn_number || null}, ${item.reason || 'Bulk stock receive'}, NOW())
+        `;
+
+        // Update or insert stock level
+        await sql`
+          INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
+          VALUES (${item.item_id}, ${warehouseId}, ${item.quantity}, NOW())
+          ON CONFLICT (item_id, warehouse_id) 
+          DO UPDATE SET 
+            quantity_on_hand = stock_levels.quantity_on_hand + ${item.quantity},
+            last_updated = NOW()
+        `;
+
+        results.push({ item_id: item.item_id, success: true, quantity_added: item.quantity });
+        totalAdded += item.quantity;
+
+      } catch (err) {
+        results.push({ item_id: item.item_id, success: false, error: String(err) });
+      }
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      message: `Bulk receive complete. Added ${totalAdded} units across ${results.filter(r => r.success).length} items.`,
+      grn_number,
+      results
+    });
+
+  } catch (error) {
+    console.error('Error bulk receiving stock:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Failed to bulk receive stock: ' + String(error)
     }, { status: 500 });
   }
 }
