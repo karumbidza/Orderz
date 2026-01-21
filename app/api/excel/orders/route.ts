@@ -343,17 +343,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Generate unique order number
+// Generate unique order number - uses timestamp + random to avoid collisions
 async function generateOrderNumber(): Promise<string> {
   const year = new Date().getFullYear();
-  const month = String(new Date().getMonth() + 1).padStart(2, '0');
-  
-  // Get count of orders this month
-  const countResult = await sql`
-    SELECT COUNT(*) as cnt FROM orders 
-    WHERE order_date >= DATE_TRUNC('month', CURRENT_DATE)
-  `;
-  
-  const sequence = Number(countResult[0].cnt) + 1;
-  return `RV-${year}-${String(sequence).padStart(4, '0')}`;
+  const timestamp = Date.now().toString(36).toUpperCase(); // Base36 timestamp
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase(); // 4 random chars
+  return `RV-${year}-${timestamp.slice(-4)}${random}`;
 }
