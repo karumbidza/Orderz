@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
           o.notes,
           s.name as site_name,
           s.city as site_city,
+          s.address as site_address,
           (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as item_count
         FROM orders o
         JOIN sites s ON o.site_id = s.id
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
           o.notes,
           s.name as site_name,
           s.city as site_city,
+          s.address as site_address,
           (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as item_count
         FROM orders o
         JOIN sites s ON o.site_id = s.id

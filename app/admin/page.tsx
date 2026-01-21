@@ -509,16 +509,21 @@ export default function AdminPage() {
   // DATA GRID COLUMNS
   // ─────────────────────────────────────────
   const ordersColumns: GridColDef[] = [
-    { field: 'voucher_number', headerName: 'Order #', width: 140, renderCell: (params) => (
+    { field: 'voucher_number', headerName: 'Order #', width: 130, renderCell: (params) => (
       <Typography variant="body2" fontFamily="monospace" fontWeight={500}>{params.value}</Typography>
     )},
-    { field: 'site_name', headerName: 'Site', width: 180, renderCell: (params) => (
-      <Box>
-        <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
-        {params.row.site_city && params.row.site_city !== params.value && (
-          <Typography variant="caption" color="text.secondary">{params.row.site_city}</Typography>
-        )}
-      </Box>
+    { field: 'site_name', headerName: 'Site', width: 140, renderCell: (params) => (
+      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
+    )},
+    { field: 'site_city', headerName: 'City', width: 110, renderCell: (params) => (
+      <Typography variant="body2" color="text.secondary">{params.value}</Typography>
+    )},
+    { field: 'site_address', headerName: 'Address', width: 160, renderCell: (params) => (
+      <Tooltip title={params.value || ''} arrow placement="top">
+        <Typography variant="body2" color="text.secondary" noWrap sx={{ cursor: 'pointer' }}>
+          {params.value || '—'}
+        </Typography>
+      </Tooltip>
     )},
     { field: 'status', headerName: 'Status', width: 140, renderCell: (params) => (
       <Chip label={params.value} color={STATUS_COLORS[params.value] || 'default'} size="small" />
