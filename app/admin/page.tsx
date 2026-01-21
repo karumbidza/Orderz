@@ -515,7 +515,9 @@ export default function AdminPage() {
     { field: 'site_name', headerName: 'Site', width: 180, renderCell: (params) => (
       <Box>
         <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
-        <Typography variant="caption" color="text.secondary">{params.row.site_city}</Typography>
+        {params.row.site_city && params.row.site_city !== params.value && (
+          <Typography variant="caption" color="text.secondary">{params.row.site_city}</Typography>
+        )}
       </Box>
     )},
     { field: 'status', headerName: 'Status', width: 140, renderCell: (params) => (
@@ -545,11 +547,14 @@ export default function AdminPage() {
     { field: 'sku', headerName: 'SKU', width: 120, renderCell: (params) => (
       <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
     )},
-    { field: 'product', headerName: 'Product', flex: 1, minWidth: 200, renderCell: (params) => (
-      <Box>
-        <Typography variant="body2" fontWeight={500} noWrap>{params.value}</Typography>
-        <Typography variant="caption" color="text.secondary">{params.row.unit}</Typography>
-      </Box>
+    { field: 'product', headerName: 'Product', flex: 1, minWidth: 180, renderCell: (params) => (
+      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
+    )},
+    { field: 'size', headerName: 'Size', width: 80, align: 'center', headerAlign: 'center', renderCell: (params) => (
+      params.value ? <Typography variant="body2">{params.value}</Typography> : <Typography variant="caption" color="text.secondary">—</Typography>
+    )},
+    { field: 'unit', headerName: 'Unit', width: 80, align: 'center', headerAlign: 'center', renderCell: (params) => (
+      <Typography variant="body2" color="text.secondary">{params.value}</Typography>
     )},
     { field: 'category', headerName: 'Category', width: 130, renderCell: (params) => (
       <Chip label={params.value} size="small" variant="outlined" />
@@ -591,11 +596,11 @@ export default function AdminPage() {
         </Box>
       );
     }},
-    { field: 'product', headerName: 'Product', flex: 1, minWidth: 200, renderCell: (params) => (
-      <Box>
-        <Typography variant="body2" fontWeight={500} noWrap>{params.value}</Typography>
-        <Typography variant="caption" color="text.secondary" fontFamily="monospace">{params.row.sku}</Typography>
-      </Box>
+    { field: 'sku', headerName: 'SKU', width: 140, renderCell: (params) => (
+      <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
+    )},
+    { field: 'product', headerName: 'Product', flex: 1, minWidth: 160, renderCell: (params) => (
+      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
     )},
     { field: 'movement_type', headerName: 'Type', width: 100, renderCell: (params) => (
       <Chip
