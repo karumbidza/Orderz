@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
     const siteResult = await sql`
       SELECT id, name, city, fulfillment_zone 
       FROM sites 
-      WHERE code = ${site_code}
+      WHERE site_code = ${site_code}
     `;
     
     if (siteResult.length === 0) {
