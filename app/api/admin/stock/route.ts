@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Create stock movement record
+    // Create stock movement record (trigger auto-updates stock_levels)
     const movement = await sql`
       INSERT INTO stock_movements 
         (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
@@ -127,17 +127,7 @@ export async function POST(request: NextRequest) {
       RETURNING id, item_id, quantity
     `;
 
-    // Update or insert stock level
-    await sql`
-      INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
-      VALUES (${item_id}, ${warehouse_id}, ${quantity}, NOW())
-      ON CONFLICT (item_id, warehouse_id) 
-      DO UPDATE SET 
-        quantity_on_hand = stock_levels.quantity_on_hand + ${quantity},
-        last_updated = NOW()
-    `;
-
-    // Get updated stock level
+    // Get updated stock level (updated by trigger)
     const stockLevel = await sql`
       SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
       FROM stock_levels sl
@@ -197,7 +187,7 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Create stock movement record
+    // Create stock movement record (trigger auto-updates stock_levels)
     const movement = await sql`
       INSERT INTO stock_movements 
         (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
@@ -206,14 +196,7 @@ export async function PATCH(request: NextRequest) {
       RETURNING id, item_id, quantity
     `;
 
-    // Update stock level
-    await sql`
-      UPDATE stock_levels 
-      SET quantity_on_hand = quantity_on_hand - ${quantity}, last_updated = NOW()
-      WHERE item_id = ${item_id} AND warehouse_id = ${warehouse_id}
-    `;
-
-    // Get updated stock level
+    // Get updated stock level (updated by trigger)
     const stockLevel = await sql`
       SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
       FROM stock_levels sl
