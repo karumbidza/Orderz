@@ -76,10 +76,16 @@ interface StockMovement {
   movement_type: 'IN' | 'OUT';
   quantity: number;
   reference_type: string;
+  reference_id: string | null;
   reason: string;
   created_at: string;
   sku: string;
   product: string;
+  category: string;
+  cost: string;
+  site_name: string | null;
+  order_number: string | null;
+  stock_value: string;
 }
 
 type Tab = 'orders' | 'inventory' | 'history';
@@ -915,47 +921,51 @@ function OrdersTable({
   onViewOrder: (id: number) => void;
 }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
+        <table className="w-full">
+          <thead className="bg-slate-50/80 border-b border-slate-200">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Order #</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Site</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">City</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Status</th>
-              <th className="text-right px-4 py-3 font-medium text-slate-600">Total</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Date</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Action</th>
+              <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Order #</th>
+              <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Site</th>
+              <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+              <th className="text-right px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</th>
+              <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th>
+              <th className="text-center px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {orders.map((order) => (
-              <tr key={order.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 font-mono text-xs">{order.voucher_number}</td>
-                <td className="px-4 py-3">{order.site_name}</td>
-                <td className="px-4 py-3 text-slate-500">{order.site_city}</td>
-                <td className="px-4 py-3">
+              <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-6 py-4">
+                  <span className="font-mono text-sm font-medium text-slate-900">{order.voucher_number}</span>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-sm font-medium text-slate-900">{order.site_name}</div>
+                  <div className="text-xs text-slate-500">{order.site_city}</div>
+                </td>
+                <td className="px-6 py-4">
                   <span
-                    className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
+                    className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
                       STATUS_COLORS[order.status] || 'bg-slate-100 text-slate-800'
                     }`}
                   >
-                    {order.status}
+                    {order.status.replace('_', ' ')}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right font-medium">
-                  ${parseFloat(order.total_amount).toFixed(2)}
+                <td className="px-6 py-4 text-right">
+                  <span className="text-sm font-semibold text-slate-900">${parseFloat(order.total_amount).toFixed(2)}</span>
                 </td>
-                <td className="px-4 py-3 text-slate-500 text-xs">
-                  {new Date(order.order_date).toLocaleDateString()}
+                <td className="px-6 py-4">
+                  <div className="text-sm text-slate-900">{new Date(order.order_date).toLocaleDateString()}</div>
+                  <div className="text-xs text-slate-500">{new Date(order.order_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-6 py-4 text-center">
                   <button
                     onClick={() => onViewOrder(order.id)}
-                    className="px-3 py-1.5 text-xs bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors"
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
                   >
-                    View Order
+                    View
                   </button>
                 </td>
               </tr>
@@ -963,7 +973,10 @@ function OrdersTable({
           </tbody>
         </table>
         {orders.length === 0 && (
-          <div className="text-center py-12 text-slate-500">No orders found</div>
+          <div className="text-center py-16 text-slate-400">
+            <div className="text-4xl mb-2">📋</div>
+            <div className="text-sm">No orders found</div>
+          </div>
         )}
       </div>
     </div>
@@ -1043,55 +1056,66 @@ function InventoryTable({
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+          <table className="w-full">
+            <thead className="bg-slate-50/80 border-b border-slate-200">
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">SKU</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Product</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Category</th>
-                <th className="text-right px-4 py-3 font-medium text-slate-600">Stock</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Unit</th>
-                <th className="text-right px-4 py-3 font-medium text-slate-600">Cost</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Actions</th>
+                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">SKU</th>
+                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Product</th>
+                <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
+                <th className="text-right px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Stock</th>
+                <th className="text-right px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Unit Cost</th>
+                <th className="text-right px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Value</th>
+                <th className="text-center px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredStock.map((item) => (
-                <tr key={item.item_id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-xs">{item.sku}</td>
-                  <td className="px-4 py-3">{item.product}</td>
-                  <td className="px-4 py-3 text-slate-500">{item.category}</td>
-                  <td className="px-4 py-3 text-right">
+                <tr key={item.item_id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-6 py-4">
+                    <span className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded">{item.sku}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-medium text-slate-900 max-w-xs truncate">{item.product}</div>
+                    <div className="text-xs text-slate-500">{item.unit}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-700">
+                      {item.category}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
                     <span
-                      className={`font-medium ${
+                      className={`text-sm font-semibold ${
                         item.quantity_on_hand === 0
                           ? 'text-red-600'
                           : item.quantity_on_hand < 10
-                          ? 'text-orange-600'
+                          ? 'text-orange-500'
                           : 'text-slate-900'
                       }`}
                     >
                       {item.quantity_on_hand}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">{item.unit}</td>
-                  <td className="px-4 py-3 text-right">${parseFloat(item.cost).toFixed(2)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
+                  <td className="px-6 py-4 text-right text-sm text-slate-600">${parseFloat(item.cost).toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
+                    ${(item.quantity_on_hand * parseFloat(item.cost)).toFixed(2)}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex justify-center gap-2">
                       <button
                         onClick={() => onAction(item, 'add')}
-                        className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors border border-green-200"
                       >
                         + Add
                       </button>
                       <button
                         onClick={() => onAction(item, 'dispatch')}
                         disabled={item.quantity_on_hand === 0}
-                        className="px-2 py-1 text-xs bg-orange-100 text-orange-700 rounded hover:bg-orange-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors border border-orange-200 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        − Dispatch
+                        − Out
                       </button>
                     </div>
                   </td>
@@ -1100,7 +1124,10 @@ function InventoryTable({
             </tbody>
           </table>
           {filteredStock.length === 0 && (
-            <div className="text-center py-12 text-slate-500">No items found</div>
+            <div className="text-center py-16 text-slate-400">
+              <div className="text-4xl mb-2">📦</div>
+              <div className="text-sm">No items found</div>
+            </div>
           )}
         </div>
       </div>
@@ -1114,51 +1141,89 @@ function InventoryTable({
 
 function StockHistoryTable({ history }: { history: StockMovement[] }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-200">
-        <h3 className="text-lg font-semibold">Stock Movements (Last 30 Days)</h3>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-6 py-5 border-b border-slate-200 bg-slate-50/50">
+        <h3 className="text-lg font-semibold text-slate-900">Stock Movements</h3>
+        <p className="text-sm text-slate-500 mt-1">Last 30 days of inventory changes</p>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
+        <table className="w-full">
+          <thead className="bg-slate-50/80 border-b border-slate-200">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Date</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">SKU</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Product</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Type</th>
-              <th className="text-right px-4 py-3 font-medium text-slate-600">Qty</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Reason</th>
+              <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Date/Time</th>
+              <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Product</th>
+              <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+              <th className="text-right px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
+              <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Destination</th>
+              <th className="text-right px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Value</th>
+              <th className="text-left px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Reference</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {history.map((movement) => (
-              <tr key={movement.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 text-xs text-slate-500">
-                  {new Date(movement.created_at).toLocaleString()}
-                </td>
-                <td className="px-4 py-3 font-mono text-xs">{movement.sku}</td>
-                <td className="px-4 py-3">{movement.product}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
-                    movement.movement_type === 'IN' 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-orange-100 text-orange-800'
-                  }`}>
-                    {movement.movement_type}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right font-medium">
-                  <span className={movement.quantity > 0 ? 'text-green-600' : 'text-orange-600'}>
-                    {movement.quantity > 0 ? '+' : ''}{movement.quantity}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-slate-500 text-xs">{movement.reason}</td>
-              </tr>
-            ))}
+            {history.map((movement) => {
+              const date = new Date(movement.created_at);
+              const stockValue = movement.stock_value ? parseFloat(String(movement.stock_value)) : (Math.abs(movement.quantity) * parseFloat(String(movement.cost || 0)));
+              
+              return (
+                <tr key={movement.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-medium text-slate-900">
+                      {date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-medium text-slate-900 max-w-xs truncate">{movement.product}</div>
+                    <div className="text-xs text-slate-500 font-mono">{movement.sku}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full ${
+                      movement.movement_type === 'IN' 
+                        ? 'bg-green-100 text-green-700 border border-green-200' 
+                        : 'bg-orange-100 text-orange-700 border border-orange-200'
+                    }`}>
+                      {movement.movement_type === 'IN' ? '↓ IN' : '↑ OUT'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <span className={`text-sm font-bold ${movement.movement_type === 'IN' ? 'text-green-600' : 'text-orange-600'}`}>
+                      {movement.movement_type === 'IN' ? '+' : '−'}{Math.abs(movement.quantity)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    {movement.site_name ? (
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">{movement.site_name}</div>
+                        {movement.order_number && (
+                          <div className="text-xs text-slate-500">Order #{movement.order_number}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <span className={`text-sm font-medium ${movement.movement_type === 'IN' ? 'text-green-600' : 'text-orange-600'}`}>
+                      ${stockValue.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-xs text-slate-600 max-w-[200px] truncate" title={movement.reason}>
+                      {movement.reason}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {history.length === 0 && (
-          <div className="text-center py-12 text-slate-500">No stock movements found</div>
+          <div className="text-center py-16 text-slate-400">
+            <div className="text-4xl mb-2">📋</div>
+            <div className="text-sm">No stock movements found</div>
+          </div>
         )}
       </div>
     </div>
