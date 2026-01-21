@@ -338,7 +338,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: false, 
       error: 'Order submission failed',
-      details: process.env.NODE_ENV === 'development' ? String(error) : undefined
+      details: String(error)  // Temporarily show error details
     }, { status: 500 });
   }
 }
