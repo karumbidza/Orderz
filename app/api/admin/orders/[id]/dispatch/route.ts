@@ -30,11 +30,11 @@ export async function GET(
         oi.employee_name,
         oi.unit_cost,
         oi.line_total,
-        COALESCE(sl.quantity, 0) as stock_available,
+        COALESCE(sl.quantity_on_hand, 0) as stock_available,
         CASE 
           WHEN COALESCE(oi.qty_dispatched, 0) >= oi.qty_requested THEN 'FULFILLED'
-          WHEN COALESCE(sl.quantity, 0) >= (oi.qty_requested - COALESCE(oi.qty_dispatched, 0)) THEN 'READY'
-          WHEN COALESCE(sl.quantity, 0) > 0 THEN 'PARTIAL'
+          WHEN COALESCE(sl.quantity_on_hand, 0) >= (oi.qty_requested - COALESCE(oi.qty_dispatched, 0)) THEN 'READY'
+          WHEN COALESCE(sl.quantity_on_hand, 0) > 0 THEN 'PARTIAL'
           ELSE 'UNAVAILABLE'
         END as dispatch_status
       FROM order_items oi
@@ -117,7 +117,7 @@ export async function POST(
         oi.item_name,
         oi.qty_requested,
         COALESCE(oi.qty_dispatched, 0) as qty_dispatched,
-        COALESCE(sl.quantity, 0) as stock_available
+        COALESCE(sl.quantity_on_hand, 0) as stock_available
       FROM order_items oi
       LEFT JOIN stock_levels sl ON oi.item_id = sl.item_id
       WHERE oi.order_id = ${orderId}
@@ -193,8 +193,8 @@ export async function POST(
         // Deduct from stock
         await sql`
           UPDATE stock_levels 
-          SET quantity = quantity - ${item.qty_to_dispatch},
-              updated_at = NOW()
+          SET quantity_on_hand = quantity_on_hand - ${item.qty_to_dispatch},
+              last_updated = NOW()
           WHERE item_id = ${item.item_id}
         `;
 

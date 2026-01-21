@@ -25,9 +25,9 @@ export async function POST(request: NextRequest) {
     const warehouseId = warehouse[0].id;
 
     // Initialize stock levels for all active items
-    // Actual schema: item_id, warehouse_id, quantity, updated_at
+    // Actual schema: item_id, warehouse_id, quantity_on_hand, last_updated
     const result = await sql`
-      INSERT INTO stock_levels (item_id, warehouse_id, quantity, updated_at)
+      INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
       SELECT 
         i.id,
         ${warehouseId},

@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
         SELECT 
           sl.item_id,
           sl.warehouse_id,
-          sl.quantity as quantity_on_hand,
-          sl.updated_at as last_updated,
+          sl.quantity_on_hand,
+          sl.last_updated,
           i.sku,
           i.product,
           i.category,
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
           i.is_active,
           w.code as warehouse_code,
           w.name as warehouse_name,
-          (sl.quantity * i.cost::numeric) as stock_value
+          (sl.quantity_on_hand * i.cost::numeric) as stock_value
         FROM stock_levels sl
         JOIN items i ON sl.item_id = i.id
         JOIN warehouses w ON sl.warehouse_id = w.id
@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
         SELECT 
           sl.item_id,
           sl.warehouse_id,
-          sl.quantity as quantity_on_hand,
-          sl.updated_at as last_updated,
+          sl.quantity_on_hand,
+          sl.last_updated,
           i.sku,
           i.product,
           i.category,
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
           i.is_active,
           w.code as warehouse_code,
           w.name as warehouse_name,
-          (sl.quantity * i.cost::numeric) as stock_value
+          (sl.quantity_on_hand * i.cost::numeric) as stock_value
         FROM stock_levels sl
         JOIN items i ON sl.item_id = i.id
         JOIN warehouses w ON sl.warehouse_id = w.id
@@ -68,8 +68,8 @@ export async function GET(request: NextRequest) {
         SELECT 
           sl.item_id,
           sl.warehouse_id,
-          sl.quantity as quantity_on_hand,
-          sl.updated_at as last_updated,
+          sl.quantity_on_hand,
+          sl.last_updated,
           i.sku,
           i.product,
           i.category,
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
           i.is_active,
           w.code as warehouse_code,
           w.name as warehouse_name,
-          (sl.quantity * i.cost::numeric) as stock_value
+          (sl.quantity_on_hand * i.cost::numeric) as stock_value
         FROM stock_levels sl
         JOIN items i ON sl.item_id = i.id
         JOIN warehouses w ON sl.warehouse_id = w.id
@@ -129,17 +129,17 @@ export async function POST(request: NextRequest) {
 
     // Update or insert stock level
     await sql`
-      INSERT INTO stock_levels (item_id, warehouse_id, quantity, updated_at)
+      INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
       VALUES (${item_id}, ${warehouse_id}, ${quantity}, NOW())
       ON CONFLICT (item_id, warehouse_id) 
       DO UPDATE SET 
-        quantity = stock_levels.quantity + ${quantity},
-        updated_at = NOW()
+        quantity_on_hand = stock_levels.quantity_on_hand + ${quantity},
+        last_updated = NOW()
     `;
 
     // Get updated stock level
     const stockLevel = await sql`
-      SELECT sl.quantity as quantity_on_hand, i.sku, i.product, w.name as warehouse_name
+      SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
       FROM stock_levels sl
       JOIN items i ON sl.item_id = i.id
       JOIN warehouses w ON sl.warehouse_id = w.id
@@ -179,7 +179,7 @@ export async function PATCH(request: NextRequest) {
 
     // Check current stock
     const currentStock = await sql`
-      SELECT quantity as quantity_on_hand FROM stock_levels 
+      SELECT quantity_on_hand FROM stock_levels 
       WHERE item_id = ${item_id} AND warehouse_id = ${warehouse_id}
     `;
 
@@ -209,13 +209,13 @@ export async function PATCH(request: NextRequest) {
     // Update stock level
     await sql`
       UPDATE stock_levels 
-      SET quantity = quantity - ${quantity}, updated_at = NOW()
+      SET quantity_on_hand = quantity_on_hand - ${quantity}, last_updated = NOW()
       WHERE item_id = ${item_id} AND warehouse_id = ${warehouse_id}
     `;
 
     // Get updated stock level
     const stockLevel = await sql`
-      SELECT sl.quantity as quantity_on_hand, i.sku, i.product, w.name as warehouse_name
+      SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
       FROM stock_levels sl
       JOIN items i ON sl.item_id = i.id
       JOIN warehouses w ON sl.warehouse_id = w.id
@@ -275,12 +275,12 @@ export async function PUT(request: NextRequest) {
 
         // Update or insert stock level
         await sql`
-          INSERT INTO stock_levels (item_id, warehouse_id, quantity, updated_at)
+          INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
           VALUES (${item.item_id}, ${warehouseId}, ${item.quantity}, NOW())
           ON CONFLICT (item_id, warehouse_id) 
           DO UPDATE SET 
-            quantity = stock_levels.quantity + ${item.quantity},
-            updated_at = NOW()
+            quantity_on_hand = stock_levels.quantity_on_hand + ${item.quantity},
+            last_updated = NOW()
         `;
 
         results.push({ item_id: item.item_id, success: true, quantity_added: item.quantity });
