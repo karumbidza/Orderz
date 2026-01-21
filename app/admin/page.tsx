@@ -531,14 +531,9 @@ export default function AdminPage() {
     { field: 'total_amount', headerName: 'Total', width: 110, align: 'right', headerAlign: 'right', renderCell: (params) => (
       <Typography variant="body2" fontWeight={600}>${parseFloat(params.value).toFixed(2)}</Typography>
     )},
-    { field: 'order_date', headerName: 'Date', width: 130, renderCell: (params) => {
+    { field: 'order_date', headerName: 'Date', width: 110, renderCell: (params) => {
       const date = new Date(params.value);
-      return (
-        <Box>
-          <Typography variant="body2">{date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography>
-          <Typography variant="caption" color="text.secondary">{date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</Typography>
-        </Box>
-      );
+      return <Typography variant="body2">{date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography>;
     }},
     { field: 'item_count', headerName: 'Items', width: 80, align: 'center', headerAlign: 'center' },
     { field: 'actions', headerName: '', width: 100, sortable: false, align: 'center', headerAlign: 'center', renderCell: (params) => (
