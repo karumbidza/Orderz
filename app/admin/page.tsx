@@ -29,10 +29,8 @@ import {
 import {
   DataGrid,
   GridColDef,
-  GridToolbar,
 } from '@mui/x-data-grid';
 import {
-  Visibility as ViewIcon,
   LocalShipping as DispatchIcon,
   Add as AddIcon,
   Remove as RemoveIcon,
@@ -44,6 +42,8 @@ import {
   History as HistoryIcon,
   ArrowDownward as InIcon,
   ArrowUpward as OutIcon,
+  Search as SearchIcon,
+  FilterList as FilterIcon,
 } from '@mui/icons-material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -247,6 +247,12 @@ export default function AdminPage() {
     grnNumber: string;
     submitting: boolean;
   }>({ open: false, items: [], grnNumber: '', submitting: false });
+
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
 
   // Load data on tab change
   useEffect(() => {
@@ -468,6 +474,38 @@ export default function AdminPage() {
   };
 
   // ─────────────────────────────────────────
+  // FILTERED DATA
+  // ─────────────────────────────────────────
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch = searchQuery === '' || 
+      order.voucher_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.site_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.site_city.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const filteredStock = stock.filter(item => {
+    const matchesSearch = searchQuery === '' ||
+      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.product.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
+
+  const filteredHistory = stockHistory.filter(movement => {
+    const matchesSearch = searchQuery === '' ||
+      movement.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      movement.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (movement.site_name && movement.site_name.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesType = typeFilter === 'all' || movement.movement_type === typeFilter;
+    return matchesSearch && matchesType;
+  });
+
+  const uniqueCategories = Array.from(new Set(stock.map(s => s.category)));
+  const uniqueStatuses = Array.from(new Set(orders.map(o => o.status)));
+
+  // ─────────────────────────────────────────
   // DATA GRID COLUMNS
   // ─────────────────────────────────────────
   const ordersColumns: GridColDef[] = [
@@ -496,12 +534,10 @@ export default function AdminPage() {
       );
     }},
     { field: 'item_count', headerName: 'Items', width: 80, align: 'center', headerAlign: 'center' },
-    { field: 'actions', headerName: 'Actions', width: 100, sortable: false, renderCell: (params) => (
-      <Tooltip title="View Order">
-        <IconButton size="small" onClick={() => viewOrder(params.row.id)} color="primary">
-          <ViewIcon />
-        </IconButton>
-      </Tooltip>
+    { field: 'actions', headerName: '', width: 100, sortable: false, align: 'center', headerAlign: 'center', renderCell: (params) => (
+      <Button size="small" variant="outlined" onClick={() => viewOrder(params.row.id)}>
+        View
+      </Button>
     )},
   ];
 
@@ -638,32 +674,115 @@ export default function AdminPage() {
 
           {/* Tabs */}
           <Paper sx={{ mb: 3 }}>
-            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs value={activeTab} onChange={(_, v) => { setActiveTab(v); setSearchQuery(''); setStatusFilter('all'); setCategoryFilter('all'); setTypeFilter('all'); }} sx={{ borderBottom: 1, borderColor: 'divider' }}>
               <Tab icon={<ReceiptIcon />} iconPosition="start" label="Orders" value="orders" />
               <Tab icon={<InventoryIcon />} iconPosition="start" label="Inventory" value="inventory" />
               <Tab icon={<HistoryIcon />} iconPosition="start" label="Stock History" value="history" />
             </Tabs>
           </Paper>
 
+          {/* Search and Filters */}
+          <Paper sx={{ mb: 2, p: 2 }}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <TextField
+                size="small"
+                placeholder={activeTab === 'orders' ? 'Search orders...' : activeTab === 'inventory' ? 'Search products...' : 'Search movements...'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: <SearchIcon sx={{ color: 'text.secondary', mr: 1 }} />,
+                }}
+                sx={{ minWidth: 300 }}
+              />
+              <FilterIcon sx={{ color: 'text.secondary' }} />
+              {activeTab === 'orders' && (
+                <TextField
+                  select
+                  size="small"
+                  label="Status"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  SelectProps={{ native: true }}
+                  sx={{ minWidth: 150 }}
+                >
+                  <option value="all">All Statuses</option>
+                  {uniqueStatuses.map(status => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </TextField>
+              )}
+              {activeTab === 'inventory' && (
+                <TextField
+                  select
+                  size="small"
+                  label="Category"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  SelectProps={{ native: true }}
+                  sx={{ minWidth: 150 }}
+                >
+                  <option value="all">All Categories</option>
+                  {uniqueCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </TextField>
+              )}
+              {activeTab === 'history' && (
+                <TextField
+                  select
+                  size="small"
+                  label="Type"
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  SelectProps={{ native: true }}
+                  sx={{ minWidth: 120 }}
+                >
+                  <option value="all">All</option>
+                  <option value="IN">Stock In</option>
+                  <option value="OUT">Stock Out</option>
+                </TextField>
+              )}
+              <Box sx={{ flex: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                {activeTab === 'orders' ? `${filteredOrders.length} orders` : 
+                 activeTab === 'inventory' ? `${filteredStock.length} items` : 
+                 `${filteredHistory.length} movements`}
+              </Typography>
+            </Stack>
+          </Paper>
+
           {/* Data Grid */}
-          <Paper sx={{ height: 650 }}>
+          <Paper sx={{ height: 600 }}>
             {loading ? (
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 <CircularProgress />
               </Box>
             ) : (
               <DataGrid
-                rows={activeTab === 'orders' ? orders : activeTab === 'inventory' ? stock.map(s => ({ ...s, id: s.item_id })) : stockHistory}
+                rows={activeTab === 'orders' ? filteredOrders : activeTab === 'inventory' ? filteredStock.map(s => ({ ...s, id: s.item_id })) : filteredHistory}
                 columns={activeTab === 'orders' ? ordersColumns : activeTab === 'inventory' ? inventoryColumns : historyColumns}
                 pageSizeOptions={[10, 25, 50, 100]}
                 initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
                 disableRowSelectionOnClick
-                slots={{ toolbar: GridToolbar }}
-                slotProps={{ toolbar: { showQuickFilter: true, quickFilterProps: { debounceMs: 500 } } }}
+                rowHeight={60}
                 sx={{
                   border: 'none',
-                  '& .MuiDataGrid-cell': { py: 1.5 },
-                  '& .MuiDataGrid-columnHeaders': { bgcolor: 'grey.50' },
+                  '& .MuiDataGrid-cell': { 
+                    py: 1.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                  },
+                  '& .MuiDataGrid-columnHeaders': { 
+                    bgcolor: 'grey.50',
+                    borderBottom: '2px solid',
+                    borderColor: 'divider',
+                  },
+                  '& .MuiDataGrid-row': {
+                    '&:hover': { bgcolor: 'action.hover' },
+                  },
+                  '& .MuiDataGrid-columnHeaderTitle': {
+                    fontWeight: 600,
+                  },
                 }}
               />
             )}
