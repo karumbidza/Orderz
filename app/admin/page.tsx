@@ -5,12 +5,14 @@ import { useState, useEffect } from 'react';
 // Types
 interface Order {
   id: number;
-  order_number: string;
+  voucher_number: string;
   site_name: string;
-  city: string;
+  site_city: string;
   status: string;
   total_amount: string;
-  created_at: string;
+  order_date: string;
+  category: string;
+  item_count: string;
 }
 
 interface OrderItem {
@@ -26,8 +28,18 @@ interface OrderItem {
   total_cost: string;
 }
 
-interface OrderDetail extends Order {
+interface OrderDetail {
+  id: number;
+  order_number: string;
+  site_name: string;
   site_code: string;
+  city: string;
+  status: string;
+  total_amount: string;
+  created_at: string;
+  category: string;
+  requested_by: string;
+  notes: string;
   items: OrderItem[];
 }
 
@@ -490,9 +502,9 @@ function OrdersTable({
           <tbody className="divide-y divide-slate-100">
             {orders.map((order) => (
               <tr key={order.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 font-mono text-xs">{order.order_number}</td>
+                <td className="px-4 py-3 font-mono text-xs">{order.voucher_number}</td>
                 <td className="px-4 py-3">{order.site_name}</td>
-                <td className="px-4 py-3 text-slate-500">{order.city}</td>
+                <td className="px-4 py-3 text-slate-500">{order.site_city}</td>
                 <td className="px-4 py-3">
                   <span
                     className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
@@ -506,7 +518,7 @@ function OrdersTable({
                   ${parseFloat(order.total_amount).toFixed(2)}
                 </td>
                 <td className="px-4 py-3 text-slate-500 text-xs">
-                  {new Date(order.created_at).toLocaleDateString()}
+                  {new Date(order.order_date).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">

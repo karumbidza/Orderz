@@ -21,10 +21,13 @@ export async function GET(
     const orderResult = await sql`
       SELECT 
         o.id,
-        o.order_number,
+        o.voucher_number as order_number,
+        o.category,
         o.status,
         o.total_amount,
-        o.created_at,
+        o.order_date as created_at,
+        o.requested_by,
+        o.notes,
         s.name as site_name,
         s.site_code,
         s.city
@@ -68,6 +71,6 @@ export async function GET(
 
   } catch (error) {
     console.error('Error fetching order details:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch order details' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to fetch order details: ' + String(error) }, { status: 500 });
   }
 }
