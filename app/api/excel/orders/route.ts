@@ -228,38 +228,42 @@ export async function POST(request: NextRequest) {
     }
     const warehouseId = warehouseResult[0].id;
 
-    // Generate order number if not provided
-    const orderNumber = voucher_number || await generateOrderNumber();
+    // Generate voucher number if not provided
+    const voucherNumber = voucher_number || await generateOrderNumber();
 
-    // Create the order
+    // Create the order - using actual schema columns
+    // orders table has: id, voucher_number, category, status, total_amount, order_date, site_id, requested_by, notes, etc.
     const orderResult = await sql`
       INSERT INTO orders (
-        order_number, 
+        voucher_number, 
         site_id, 
-        warehouse_id, 
+        category,
         status, 
-        ordered_by, 
-        notes
+        requested_by, 
+        notes,
+        order_date
       )
       VALUES (
-        ${orderNumber},
+        ${voucherNumber},
         ${site.id},
-        ${warehouseId},
+        ${category || 'General'},
         'PENDING',
         ${ordered_by || null},
-        ${notes || null}
+        ${notes || null},
+        NOW()
       )
-      RETURNING id, order_number, status, ordered_at
+      RETURNING id, voucher_number, status, order_date
     `;
     
     const order = orderResult[0];
 
     // Insert order items
+    // order_items has: id, order_id, item_id, sku, item_name, qty_requested, qty_approved, unit_cost, line_total, size, employee_name, notes
     const insertedItems = [];
     const errors = [];
 
     for (const item of items) {
-      const { sku, quantity, employee_name } = item;
+      const { sku, quantity, employee_name, size } = item;
       
       if (!sku || !quantity) {
         errors.push(`Invalid item: missing sku or quantity`);
@@ -268,7 +272,7 @@ export async function POST(request: NextRequest) {
 
       // Look up item by SKU
       const itemResult = await sql`
-        SELECT id, product, category, unit, cost, tracking_type, requires_employee
+        SELECT id, product, category, size, cost
         FROM items 
         WHERE sku = ${sku}
       `;
@@ -279,112 +283,63 @@ export async function POST(request: NextRequest) {
       }
       
       const dbItem = itemResult[0];
-      
-      // Validate employee requirement for uniforms
-      if (dbItem.requires_employee && !employee_name) {
-        errors.push(`${sku} requires employee name`);
-        continue;
-      }
+      const unitCost = parseFloat(dbItem.cost) || 0;
+      const lineTotal = unitCost * quantity;
 
-      // Insert order item
+      // Insert order item with correct column names
       const orderItemResult = await sql`
         INSERT INTO order_items (
           order_id,
           item_id,
-          quantity_ordered,
+          sku,
+          item_name,
+          qty_requested,
           unit_cost,
-          notes
+          line_total,
+          size,
+          employee_name
         )
         VALUES (
           ${order.id},
           ${dbItem.id},
+          ${sku},
+          ${dbItem.product},
           ${quantity},
-          ${dbItem.cost || 0},
-          ${employee_name ? `Employee: ${employee_name}` : null}
+          ${unitCost},
+          ${lineTotal},
+          ${size || dbItem.size || null},
+          ${employee_name || null}
         )
-        RETURNING id, quantity_ordered, unit_cost
+        RETURNING id, sku, item_name, qty_requested, unit_cost, line_total
       `;
       
-      insertedItems.push({
-        line_id: orderItemResult[0].id,
-        sku: sku,
-        product: dbItem.product,
-        quantity: quantity,
-        unit_cost: orderItemResult[0].unit_cost,
-        employee_name: employee_name || null
-      });
-
-      // If this is a uniform with employee, create uniform assignment record
-      if (dbItem.category === 'Uniforms' && employee_name) {
-        // Try to find or create employee
-        let employeeResult = await sql`
-          SELECT id FROM employees 
-          WHERE LOWER(full_name) = LOWER(${employee_name}) 
-          AND site_id = ${site.id}
-          LIMIT 1
-        `;
-        
-        if (employeeResult.length === 0) {
-          // Auto-create employee record
-          employeeResult = await sql`
-            INSERT INTO employees (site_id, full_name, department)
-            VALUES (${site.id}, ${employee_name}, 'Unknown')
-            ON CONFLICT DO NOTHING
-            RETURNING id
-          `;
-        }
-        
-        if (employeeResult.length > 0) {
-          // Create uniform assignment (pending)
-          await sql`
-            INSERT INTO uniform_assignments (
-              employee_id,
-              item_id,
-              quantity,
-              order_id,
-              status,
-              notes
-            )
-            VALUES (
-              ${employeeResult[0].id},
-              ${dbItem.id},
-              ${quantity},
-              ${order.id},
-              'PENDING',
-              'Created from Excel order'
-            )
-          `;
-        }
-      }
+      insertedItems.push(orderItemResult[0]);
     }
 
-    // Calculate order total
-    const totalResult = await sql`
-      SELECT COALESCE(SUM(quantity_ordered * unit_cost), 0)::float as total
-      FROM order_items
-      WHERE order_id = ${order.id}
-    `;
+    // Update order total
+    const totalAmount = insertedItems.reduce((sum, item) => sum + parseFloat(item.line_total || 0), 0);
+    await sql`UPDATE orders SET total_amount = ${totalAmount} WHERE id = ${order.id}`;
 
-    return Response.json({
+    return NextResponse.json({
       success: true,
-      order: {
-        id: order.id,
-        order_number: order.order_number,
+      data: {
+        order_id: order.id,
+        voucher_number: order.voucher_number,
         status: order.status,
-        ordered_at: order.ordered_at,
-        site_name: site.name,
-        site_code: site_code,
-        fulfillment_zone: site.fulfillment_zone,
-        item_count: insertedItems.length,
-        total: totalResult[0].total
-      },
-      items: insertedItems,
-      errors: errors.length > 0 ? errors : undefined
-    }, { status: 201 });
+        site: site.name,
+        items_added: insertedItems.length,
+        total_amount: totalAmount,
+        errors: errors.length > 0 ? errors : undefined
+      }
+    });
 
   } catch (error) {
-    console.error('Excel order submission error:', error);
-    return errorResponse('Order submission failed', 500);
+    console.error('Error creating order:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Order submission failed',
+      details: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 });
   }
 }
 
@@ -396,9 +351,9 @@ async function generateOrderNumber(): Promise<string> {
   // Get count of orders this month
   const countResult = await sql`
     SELECT COUNT(*) as cnt FROM orders 
-    WHERE ordered_at >= DATE_TRUNC('month', CURRENT_DATE)
+    WHERE order_date >= DATE_TRUNC('month', CURRENT_DATE)
   `;
   
   const sequence = Number(countResult[0].cnt) + 1;
-  return `ORD-${year}${month}-${String(sequence).padStart(4, '0')}`;
+  return `RV-${year}-${String(sequence).padStart(4, '0')}`;
 }
