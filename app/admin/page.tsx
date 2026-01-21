@@ -22,9 +22,12 @@ interface OrderItem {
   size: string | null;
   employee_name: string | null;
   quantity: number;
+  qty_dispatched: number;
   qty_approved: number | null;
   unit_cost: string;
   total_cost: string;
+  stock_available?: number;
+  dispatch_status?: 'FULFILLED' | 'READY' | 'PARTIAL' | 'UNAVAILABLE';
 }
 
 interface OrderDetail {
@@ -42,6 +45,20 @@ interface OrderDetail {
   items: OrderItem[];
 }
 
+interface DispatchInfo {
+  order_id: number;
+  items: OrderItem[];
+  summary: {
+    total_items: number;
+    fulfilled: number;
+    ready: number;
+    partial: number;
+    unavailable: number;
+    can_dispatch_full: boolean;
+    can_dispatch_partial: boolean;
+  };
+}
+
 interface StockItem {
   item_id: number;
   sku: string;
@@ -54,14 +71,24 @@ interface StockItem {
 }
 
 type Tab = 'orders' | 'inventory';
-type OrderStatus = 'PENDING' | 'PROCESSING' | 'DISPATCHED' | 'RECEIVED' | 'CANCELLED';
+type OrderStatus = 'PENDING' | 'PROCESSING' | 'DISPATCHED' | 'PARTIAL_DISPATCH' | 'RECEIVED' | 'DECLINED' | 'CANCELLED';
+type InventoryCategory = 'all' | 'PPE' | 'Uniforms' | 'Stationery' | 'Consumable';
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-yellow-100 text-yellow-800',
   PROCESSING: 'bg-blue-100 text-blue-800',
   DISPATCHED: 'bg-purple-100 text-purple-800',
+  PARTIAL_DISPATCH: 'bg-orange-100 text-orange-800',
   RECEIVED: 'bg-green-100 text-green-800',
+  DECLINED: 'bg-red-100 text-red-800',
   CANCELLED: 'bg-red-100 text-red-800',
+};
+
+const DISPATCH_STATUS_COLORS: Record<string, string> = {
+  FULFILLED: 'bg-green-100 text-green-800',
+  READY: 'bg-green-50 text-green-700',
+  PARTIAL: 'bg-yellow-100 text-yellow-800',
+  UNAVAILABLE: 'bg-red-100 text-red-800',
 };
 
 export default function AdminPage() {
@@ -153,6 +180,93 @@ export default function AdminPage() {
 
   const printOrder = () => {
     window.print();
+  };
+
+  // ─────────────────────────────────────────
+  // DISPATCH MODAL
+  // ─────────────────────────────────────────
+
+  const [dispatchModal, setDispatchModal] = useState<{
+    open: boolean;
+    loading: boolean;
+    orderId: number | null;
+    dispatchInfo: DispatchInfo | null;
+    confirming: boolean;
+  }>({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false });
+
+  const openDispatchModal = async (orderId: number) => {
+    setDispatchModal({ open: true, loading: true, orderId, dispatchInfo: null, confirming: false });
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/dispatch`);
+      const data = await res.json();
+      if (data.success) {
+        setDispatchModal({ 
+          open: true, 
+          loading: false, 
+          orderId, 
+          dispatchInfo: data.data, 
+          confirming: false 
+        });
+      } else {
+        showMessage('Error: ' + data.error);
+        setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false });
+      }
+    } catch (err) {
+      showMessage('Failed to load dispatch info');
+      setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false });
+    }
+  };
+
+  const handleDispatch = async (forcePartial: boolean = false) => {
+    if (!dispatchModal.orderId) return;
+    
+    setDispatchModal({ ...dispatchModal, confirming: true });
+    try {
+      const res = await fetch(`/api/admin/orders/${dispatchModal.orderId}/dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force_partial: forcePartial }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage(data.message);
+        setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false });
+        setOrderModal({ open: false, order: null, loading: false });
+        loadOrders();
+      } else if (data.require_confirmation) {
+        // Show partial dispatch confirmation
+        showMessage('Partial dispatch available. Click "Dispatch Available" to proceed.');
+        setDispatchModal({ ...dispatchModal, confirming: false });
+      } else {
+        showMessage('Error: ' + data.error);
+        setDispatchModal({ ...dispatchModal, confirming: false });
+      }
+    } catch (err) {
+      showMessage('Failed to dispatch');
+      setDispatchModal({ ...dispatchModal, confirming: false });
+    }
+  };
+
+  const handleDecline = async (reason: string) => {
+    if (!orderModal.order) return;
+    
+    try {
+      const res = await fetch(`/api/admin/orders/${orderModal.order.id}/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage('Order declined');
+        setOrderModal({ open: false, order: null, loading: false });
+        loadOrders();
+      } else {
+        showMessage('Error: ' + data.error);
+      }
+    } catch (err) {
+      showMessage('Failed to decline order');
+    }
   };
 
   // ─────────────────────────────────────────
@@ -368,6 +482,26 @@ export default function AdminPage() {
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 print:hidden">
                   <h3 className="text-lg font-semibold">Order Details</h3>
                   <div className="flex gap-2">
+                    {/* Dispatch/Decline buttons for PENDING or PARTIAL_DISPATCH orders */}
+                    {(orderModal.order.status === 'PENDING' || orderModal.order.status === 'PARTIAL_DISPATCH') && (
+                      <>
+                        <button
+                          onClick={() => openDispatchModal(orderModal.order!.id)}
+                          className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+                        >
+                          📦 Dispatch
+                        </button>
+                        <button
+                          onClick={() => {
+                            const reason = prompt('Reason for declining this order:');
+                            if (reason) handleDecline(reason);
+                          }}
+                          className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
+                        >
+                          ✕ Decline
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={printOrder}
                       className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800"
@@ -460,6 +594,110 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Dispatch Modal */}
+      {dispatchModal.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[80vh] overflow-auto shadow-xl">
+            {dispatchModal.loading ? (
+              <div className="p-12 text-center text-slate-500">Checking stock availability...</div>
+            ) : dispatchModal.dispatchInfo ? (
+              <>
+                <div className="px-6 py-4 border-b border-slate-200">
+                  <h3 className="text-lg font-semibold">Dispatch Order</h3>
+                  <p className="text-sm text-slate-500">
+                    {dispatchModal.dispatchInfo.summary.ready + dispatchModal.dispatchInfo.summary.fulfilled} of {dispatchModal.dispatchInfo.summary.total_items} items ready
+                  </p>
+                </div>
+                
+                {/* Summary */}
+                <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{dispatchModal.dispatchInfo.summary.ready}</div>
+                    <div className="text-xs text-slate-500">Ready</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{dispatchModal.dispatchInfo.summary.partial}</div>
+                    <div className="text-xs text-slate-500">Partial</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">{dispatchModal.dispatchInfo.summary.unavailable}</div>
+                    <div className="text-xs text-slate-500">Unavailable</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-slate-400">{dispatchModal.dispatchInfo.summary.fulfilled}</div>
+                    <div className="text-xs text-slate-500">Already Sent</div>
+                  </div>
+                </div>
+
+                {/* Items List */}
+                <div className="px-6 py-4">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Item</th>
+                        <th className="text-center py-2">Requested</th>
+                        <th className="text-center py-2">In Stock</th>
+                        <th className="text-center py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dispatchModal.dispatchInfo.items.map((item: any) => (
+                        <tr key={item.id} className="border-b border-slate-100">
+                          <td className="py-2">
+                            <div className="font-medium">{item.item_name}</div>
+                            <div className="text-xs text-slate-400">{item.sku}</div>
+                          </td>
+                          <td className="py-2 text-center">{item.qty_requested - item.qty_dispatched}</td>
+                          <td className="py-2 text-center">{item.stock_available}</td>
+                          <td className="py-2 text-center">
+                            <span className={`inline-block px-2 py-1 text-xs rounded-full ${DISPATCH_STATUS_COLORS[item.dispatch_status] || 'bg-slate-100'}`}>
+                              {item.dispatch_status === 'FULFILLED' ? '✓ Sent' : 
+                               item.dispatch_status === 'READY' ? '✓ Ready' :
+                               item.dispatch_status === 'PARTIAL' ? '⚠ Partial' : '✕ No Stock'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Actions */}
+                <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+                  <button
+                    onClick={() => setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false })}
+                    className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
+                  >
+                    Cancel
+                  </button>
+                  {!dispatchModal.dispatchInfo.summary.can_dispatch_full && dispatchModal.dispatchInfo.summary.can_dispatch_partial && (
+                    <button
+                      onClick={() => handleDispatch(true)}
+                      disabled={dispatchModal.confirming}
+                      className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                    >
+                      {dispatchModal.confirming ? 'Processing...' : '⚠ Dispatch Available Only'}
+                    </button>
+                  )}
+                  {dispatchModal.dispatchInfo.summary.can_dispatch_full && (
+                    <button
+                      onClick={() => handleDispatch(false)}
+                      disabled={dispatchModal.confirming}
+                      className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {dispatchModal.confirming ? 'Processing...' : '✓ Dispatch All'}
+                    </button>
+                  )}
+                  {!dispatchModal.dispatchInfo.summary.can_dispatch_partial && (
+                    <span className="px-4 py-2 text-sm text-red-600">No items available to dispatch</span>
+                  )}
+                </div>
+              </>
             ) : null}
           </div>
         </div>
@@ -571,21 +809,60 @@ function InventoryTable({
   onAction: (item: StockItem, action: 'add' | 'dispatch') => void;
 }) {
   const [filter, setFilter] = useState('');
+  const [category, setCategory] = useState<InventoryCategory>('all');
   
-  const filteredStock = stock.filter(
-    (item) =>
+  const categories: { key: InventoryCategory; label: string }[] = [
+    { key: 'all', label: 'All Items' },
+    { key: 'PPE', label: 'PPE' },
+    { key: 'Uniforms', label: 'Uniforms' },
+    { key: 'Stationery', label: 'Stationery' },
+    { key: 'Consumable', label: 'Consumables' },
+  ];
+  
+  const filteredStock = stock.filter((item) => {
+    const matchesSearch = 
       item.product.toLowerCase().includes(filter.toLowerCase()) ||
       item.sku.toLowerCase().includes(filter.toLowerCase()) ||
-      item.category.toLowerCase().includes(filter.toLowerCase())
-  );
+      item.category.toLowerCase().includes(filter.toLowerCase());
+    const matchesCategory = category === 'all' || item.category === category;
+    return matchesSearch && matchesCategory;
+  });
+
+  // Get counts per category
+  const getCategoryCount = (cat: InventoryCategory) => {
+    if (cat === 'all') return stock.length;
+    return stock.filter(item => item.category === cat).length;
+  };
 
   return (
     <div>
+      {/* Category Tabs */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {categories.map((cat) => (
+          <button
+            key={cat.key}
+            onClick={() => setCategory(cat.key)}
+            className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+              category === cat.key
+                ? 'bg-slate-900 text-white'
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {cat.label}
+            <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
+              category === cat.key ? 'bg-white/20' : 'bg-slate-100'
+            }`}>
+              {getCategoryCount(cat.key)}
+            </span>
+          </button>
+        ))}
+      </div>
+      
       {/* Search */}
       <div className="mb-4">
         <input
           type="text"
-          placeholder="Search by product, SKU, or category..."
+          placeholder="Search by product or SKU..."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           className="w-full max-w-md border border-slate-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"

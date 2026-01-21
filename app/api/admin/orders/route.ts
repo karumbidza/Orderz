@@ -4,7 +4,7 @@ import { sql } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 
 // Valid status values
-const STATUS_VALUES = ['PENDING', 'PROCESSING', 'DISPATCHED', 'RECEIVED', 'CANCELLED'] as const;
+const STATUS_VALUES = ['PENDING', 'PROCESSING', 'DISPATCHED', 'PARTIAL_DISPATCH', 'RECEIVED', 'DECLINED', 'CANCELLED'] as const;
 
 // ─────────────────────────────────────────────
 // GET /api/admin/orders - Get all orders for admin
@@ -14,6 +14,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '100');
     const status = searchParams.get('status');
+
+    // AUTO-RECEIVE: Check for dispatched orders past their auto-receive date
+    // Only DISPATCHED orders auto-receive, not PARTIAL_DISPATCH
+    await sql`
+      UPDATE orders 
+      SET status = 'RECEIVED', 
+          received_at = NOW(), 
+          received_by = 'Auto-Receive System',
+          updated_at = NOW()
+      WHERE status = 'DISPATCHED' 
+        AND auto_receive_date IS NOT NULL 
+        AND auto_receive_date <= NOW()
+    `;
 
     let orders;
     if (status) {
