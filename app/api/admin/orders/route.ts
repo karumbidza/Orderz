@@ -17,16 +17,21 @@ export async function GET(request: NextRequest) {
 
     // AUTO-RECEIVE: Check for dispatched orders past their auto-receive date
     // Only DISPATCHED orders auto-receive, not PARTIAL_DISPATCH
-    await sql`
-      UPDATE orders 
-      SET status = 'RECEIVED', 
-          received_at = NOW(), 
-          received_by = 'Auto-Receive System',
-          updated_at = NOW()
-      WHERE status = 'DISPATCHED' 
-        AND auto_receive_date IS NOT NULL 
-        AND auto_receive_date <= NOW()
-    `;
+    // Wrapped in try-catch in case column doesn't exist yet
+    try {
+      await sql`
+        UPDATE orders 
+        SET status = 'RECEIVED', 
+            received_at = NOW(), 
+            received_by = 'Auto-Receive System',
+            updated_at = NOW()
+        WHERE status = 'DISPATCHED' 
+          AND auto_receive_date IS NOT NULL 
+          AND auto_receive_date <= NOW()
+      `;
+    } catch (e) {
+      // Column may not exist yet - ignore
+    }
 
     let orders;
     if (status) {
