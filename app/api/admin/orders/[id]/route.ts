@@ -42,21 +42,19 @@ export async function GET(
 
     const order = orderResult[0];
 
-    // Get order items with item details
+    // Get order items - order_items has: id, order_id, employee_id, item_id, qty_requested, qty_approved, unit_cost, line_total, size, employee_name, notes, sku, item_name
     const items = await sql`
       SELECT 
         oi.id,
-        oi.quantity,
+        oi.qty_requested as quantity,
+        oi.qty_approved,
         oi.unit_cost,
-        oi.total_cost,
-        i.sku,
-        i.product,
-        i.category,
-        i.role,
-        i.size,
-        i.unit
+        oi.line_total as total_cost,
+        oi.size,
+        oi.employee_name,
+        oi.sku,
+        oi.item_name as product
       FROM order_items oi
-      JOIN items i ON oi.item_id = i.id
       WHERE oi.order_id = ${orderId}
       ORDER BY i.category, i.product, i.size
     `;
