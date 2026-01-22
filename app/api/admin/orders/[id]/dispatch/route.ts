@@ -214,7 +214,7 @@ export async function POST(
         // Deduct from stock - use RETURNING to ensure query completes
         const stockUpdate = await sql`
           UPDATE stock_levels 
-          SET quantity_on_hand = GREATEST(0, quantity_on_hand - ${qtyToDispatch}),
+          SET quantity_on_hand = quantity_on_hand - ${qtyToDispatch},
               last_updated = NOW()
           WHERE item_id = ${itemId} AND warehouse_id = 2
           RETURNING item_id, quantity_on_hand
