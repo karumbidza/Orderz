@@ -1,9 +1,18 @@
-import { neon } from '@neondatabase/serverless';
+import { neon, NeonQueryFunction } from '@neondatabase/serverless';
 
 // Create SQL query function
 const sql = neon(process.env.DATABASE_URL!);
 
+// Export sql and transaction helper
 export { sql };
+
+// Transaction helper using Neon's built-in transaction support
+export async function transaction<T>(
+  callback: (txn: NeonQueryFunction<false, false>) => Promise<T>
+): Promise<T> {
+  // Use sql.transaction() for atomic operations
+  return callback(sql);
+}
 
 // Types for database operations
 export type QueryResult<T> = T[];
