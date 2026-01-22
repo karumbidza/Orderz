@@ -1368,20 +1368,24 @@ export default function AdminPage() {
           <DialogContent>
             {siteModal.site && (
               <Stack spacing={2} sx={{ mt: 1 }}>
-                <TextField
-                  fullWidth
-                  label="Site Code"
-                  value={siteModal.site.site_code}
-                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, site_code: e.target.value } })}
-                  disabled={!siteModal.isNew}
-                  placeholder="e.g. HARARE-MAIN"
-                />
+                {/* Site Code - shown only when editing, auto-generated for new sites */}
+                {!siteModal.isNew && (
+                  <TextField
+                    fullWidth
+                    label="Site Code"
+                    value={siteModal.site.site_code}
+                    disabled
+                    helperText="Auto-generated from site name"
+                  />
+                )}
                 <TextField
                   fullWidth
                   label="Site Name"
                   value={siteModal.site.name}
                   onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, name: e.target.value } })}
                   placeholder="e.g. Harare Main Branch"
+                  required
+                  helperText={siteModal.isNew ? "Site code will be auto-generated from name" : ""}
                 />
                 <TextField
                   fullWidth
