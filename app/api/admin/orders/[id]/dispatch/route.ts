@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
+import { sql } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
-const API_VERSION = 'v3-fresh-connection';
+const API_VERSION = 'v4-shared-connection';
 
 // ─────────────────────────────────────────────
 // GET /api/admin/orders/[id]/dispatch - Check stock availability for order
@@ -11,8 +11,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const sql = neon(process.env.DATABASE_URL!);
-  
   try {
     const orderId = parseInt(params.id);
     
@@ -86,9 +84,6 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  // Create fresh sql connection for this request
-  const sql = neon(process.env.DATABASE_URL!);
-  
   try {
     const orderId = parseInt(params.id);
     
@@ -201,7 +196,8 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Perform dispatch - deduct stock and update qty_dispatched using transaction
+    // Perform dispatch - deduct stock and update qty_dispatched
+    // Using individual queries like test-update does (which works)
     const dispatched: any[] = [];
     
     for (const item of dispatchResults) {
@@ -211,41 +207,45 @@ export async function POST(
         const orderItemId = Number(item.id);
         console.log(`Dispatching item_id=${itemId}, order_item_id=${orderItemId}, qty=${qtyToDispatch}`);
         
-        // Use sql.transaction() to ensure all operations are atomic
-        const [orderItemResult, stockResult, movementResult] = await sql.transaction([
-          // 1. Update qty_dispatched on order_items
-          sql`
-            UPDATE order_items 
-            SET qty_dispatched = COALESCE(qty_dispatched, 0) + ${qtyToDispatch}
-            WHERE id = ${orderItemId}
-            RETURNING id, qty_dispatched
-          `,
-          // 2. Deduct from stock_levels
-          sql`
-            UPDATE stock_levels 
-            SET quantity_on_hand = quantity_on_hand - ${qtyToDispatch},
-                last_updated = NOW()
-            WHERE item_id = ${itemId} AND warehouse_id = 2
-            RETURNING item_id, quantity_on_hand
-          `,
-          // 3. Record stock movement
-          sql`
-            INSERT INTO stock_movements (item_id, warehouse_id, quantity, movement_type, reference_type, reference_id, reason, created_at)
-            VALUES (
-              ${itemId},
-              2,
-              ${-qtyToDispatch},
-              'OUT',
-              'ORDER',
-              ${String(orderId)},
-              ${'Dispatched for order ' + order.voucher_number},
-              NOW()
-            )
-            RETURNING id
-          `
-        ]);
+        // Get before value (for debugging)
+        const beforeStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${itemId} AND warehouse_id = 2`;
+        console.log(`BEFORE: item ${itemId} has ${beforeStock[0]?.quantity_on_hand}`);
         
-        console.log('Transaction results:', { orderItemResult, stockResult, movementResult });
+        // Update stock_levels FIRST (just like test-update does)
+        const stockResult = await sql`
+          UPDATE stock_levels 
+          SET quantity_on_hand = quantity_on_hand - ${qtyToDispatch},
+              last_updated = NOW()
+          WHERE item_id = ${itemId} AND warehouse_id = 2
+          RETURNING item_id, quantity_on_hand, last_updated
+        `;
+        console.log('Stock UPDATE result:', stockResult);
+        
+        // Verify after (for debugging)
+        const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${itemId} AND warehouse_id = 2`;
+        console.log(`AFTER: item ${itemId} has ${afterStock[0]?.quantity_on_hand}`);
+        
+        // Update qty_dispatched on order_items
+        await sql`
+          UPDATE order_items 
+          SET qty_dispatched = COALESCE(qty_dispatched, 0) + ${qtyToDispatch}
+          WHERE id = ${orderItemId}
+        `;
+        
+        // Record stock movement
+        await sql`
+          INSERT INTO stock_movements (item_id, warehouse_id, quantity, movement_type, reference_type, reference_id, reason, created_at)
+          VALUES (
+            ${itemId},
+            2,
+            ${-qtyToDispatch},
+            'OUT',
+            'ORDER',
+            ${String(orderId)},
+            ${'Dispatched for order ' + order.voucher_number},
+            NOW()
+          )
+        `;
 
         dispatched.push({
           order_item_id: item.id,
@@ -253,8 +253,9 @@ export async function POST(
           item_name: item.item_name,
           qty_dispatched: item.qty_to_dispatch,
           qty_remaining: item.remaining_after,
+          stock_before: beforeStock[0]?.quantity_on_hand,
           stock_update_result: stockResult,
-          transaction_used: true
+          stock_after: afterStock[0]?.quantity_on_hand
         });
       }
     }
