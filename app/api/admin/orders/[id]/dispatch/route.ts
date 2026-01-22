@@ -212,7 +212,11 @@ export async function POST(
           WHERE id = ${item.id}
         `;
 
-        // Deduct from stock - use RETURNING to ensure query completes
+        // Deduct from stock - verify before
+        const beforeStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${itemId} AND warehouse_id = 2`;
+        console.log(`BEFORE stock for item ${itemId}:`, beforeStock);
+        
+        // Perform update
         const stockUpdate = await sql`
           UPDATE stock_levels 
           SET quantity_on_hand = quantity_on_hand - ${qtyToDispatch},
@@ -220,7 +224,11 @@ export async function POST(
           WHERE item_id = ${itemId} AND warehouse_id = 2
           RETURNING item_id, quantity_on_hand
         `;
-        console.log('Stock updated:', stockUpdate);
+        console.log('UPDATE RETURNED:', stockUpdate);
+        
+        // Verify after
+        const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${itemId} AND warehouse_id = 2`;
+        console.log(`AFTER stock for item ${itemId}:`, afterStock);
 
         // Record stock movement
         await sql`
@@ -243,7 +251,9 @@ export async function POST(
           item_name: item.item_name,
           qty_dispatched: item.qty_to_dispatch,
           qty_remaining: item.remaining_after,
-          stock_update_result: stockUpdate
+          stock_before: beforeStock[0]?.quantity_on_hand,
+          stock_update_result: stockUpdate,
+          stock_after: afterStock[0]?.quantity_on_hand
         });
       }
     }
