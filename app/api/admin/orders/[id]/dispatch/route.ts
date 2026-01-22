@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
+const API_VERSION = 'v2-stock-fix';
 
 // ─────────────────────────────────────────────
 // GET /api/admin/orders/[id]/dispatch - Check stock availability for order
@@ -275,6 +276,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
+      api_version: API_VERSION,
       message: orderFullyDispatched ? 
         'Order fully dispatched' : 
         'Order partially dispatched - some items pending',
