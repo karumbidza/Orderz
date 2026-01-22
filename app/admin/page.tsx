@@ -1306,7 +1306,7 @@ export default function AdminPage() {
         </Dialog>
 
         {/* Dispatch Modal */}
-        <Dialog open={dispatchModal.open} onClose={() => setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false })} maxWidth="sm" fullWidth>
+        <Dialog open={dispatchModal.open} onClose={() => setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false, customQty: {} })} maxWidth="md" fullWidth>
           {dispatchModal.loading ? (
             <Box sx={{ p: 8, textAlign: 'center' }}>
               <CircularProgress />
