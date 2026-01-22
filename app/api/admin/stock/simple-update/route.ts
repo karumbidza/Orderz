@@ -9,34 +9,31 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { item_id, qty, order_item_id } = body;
     
-    // Exactly like dispatch does:
-    const itemId = Number(item_id);
-    const qtyToDispatch = Number(qty);
-    const orderItemId = Number(order_item_id);
+    // Don't use Number() conversion - use params directly like test-update
     
     // 1. Get before value
-    const beforeStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${itemId} AND warehouse_id = 2`;
-    console.log(`BEFORE: item ${itemId} has ${beforeStock[0]?.quantity_on_hand}`);
+    const beforeStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${item_id} AND warehouse_id = 2`;
+    console.log(`BEFORE: item ${item_id} has ${beforeStock[0]?.quantity_on_hand}`);
     
     // 2. Update stock_levels
     const stockResult = await sql`
       UPDATE stock_levels 
-      SET quantity_on_hand = quantity_on_hand - ${qtyToDispatch},
+      SET quantity_on_hand = quantity_on_hand - ${qty},
           last_updated = NOW()
-      WHERE item_id = ${itemId} AND warehouse_id = 2
+      WHERE item_id = ${item_id} AND warehouse_id = 2
       RETURNING item_id, quantity_on_hand, last_updated
     `;
     console.log('Stock UPDATE result:', stockResult);
     
     // 3. Verify after
-    const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${itemId} AND warehouse_id = 2`;
-    console.log(`AFTER: item ${itemId} has ${afterStock[0]?.quantity_on_hand}`);
+    const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${item_id} AND warehouse_id = 2`;
+    console.log(`AFTER: item ${item_id} has ${afterStock[0]?.quantity_on_hand}`);
     
     // 4. Update order_items
     const orderItemResult = await sql`
       UPDATE order_items 
-      SET qty_dispatched = COALESCE(qty_dispatched, 0) + ${qtyToDispatch}
-      WHERE id = ${orderItemId}
+      SET qty_dispatched = COALESCE(qty_dispatched, 0) + ${qty}
+      WHERE id = ${order_item_id}
       RETURNING id, qty_dispatched
     `;
     console.log('Order item UPDATE result:', orderItemResult);
@@ -45,13 +42,13 @@ export async function POST(request: NextRequest) {
     const movementResult = await sql`
       INSERT INTO stock_movements (item_id, warehouse_id, quantity, movement_type, reference_type, reference_id, reason, created_at)
       VALUES (
-        ${itemId},
+        ${item_id},
         2,
-        ${-qtyToDispatch},
+        ${-qty},
         'OUT',
         'ORDER',
-        'TEST',
-        'Simple update test',
+        'TEST2',
+        'Simple update test v2',
         NOW()
       )
       RETURNING id
