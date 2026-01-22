@@ -32,14 +32,19 @@ export async function POST(request: NextRequest) {
     // 4. One more SELECT to test 4 queries
     const dummy = await sql`SELECT 1 as test`;
     console.log('Dummy query result:', dummy);
+    
+    // 5. Another SELECT to test 5 queries
+    const dummy2 = await sql`SELECT 2 as test`;
+    console.log('Dummy2 query result:', dummy2);
 
     return NextResponse.json({
       success: true,
       stock_before: beforeStock[0]?.quantity_on_hand,
       stock_update_result: stockResult,
       stock_after: afterStock[0]?.quantity_on_hand,
-      note: '4 queries to test',
-      dummy: dummy
+      note: '5 queries to test',
+      dummy: dummy,
+      dummy2: dummy2
     });
   } catch (error) {
     console.error('Simple update error:', error);
