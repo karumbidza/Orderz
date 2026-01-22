@@ -16,21 +16,22 @@ export async function GET(request: NextRequest) {
     const sites = await sql`
       SELECT 
         id,
-        code,
+        site_code as code,
         name,
+        city,
         COALESCE(address, '') as address,
-        COALESCE(contact_person, '') as contact_person,
+        COALESCE(contact_name, '') as contact_person,
         COALESCE(email, '') as email,
         COALESCE(phone, '') as phone
       FROM sites 
       WHERE is_active = true
-      ORDER BY code
+      ORDER BY name
     `;
     
     if (format === 'csv') {
-      const headers = ['id', 'code', 'name', 'address', 'contact_person', 'email', 'phone'];
+      const headers = ['id', 'code', 'name', 'city', 'address', 'contact_person', 'email', 'phone'];
       const rows = sites.map((row: Record<string, unknown>) => 
-        headers.map(h => `"${String(row[h]).replace(/"/g, '""')}"`).join(',')
+        headers.map(h => `"${String(row[h] || '').replace(/"/g, '""')}"`).join(',')
       );
       const csv = [headers.join(','), ...rows].join('\n');
       
@@ -42,9 +43,9 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    return Response.json(sites);
+    return Response.json({ success: true, sites, count: sites.length });
   } catch (error) {
     console.error('Excel sites export error:', error);
-    return Response.json({ error: 'Export failed' }, { status: 500 });
+    return Response.json({ error: 'Export failed', details: String(error) }, { status: 500 });
   }
 }

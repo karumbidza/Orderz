@@ -116,7 +116,7 @@ export const OrderItemBatchSchema = z.object({
 // ─────────────────────────────────────────────
 export const PaginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1).catch(1),
-  limit: z.coerce.number().int().min(1).max(500).default(50).catch(50),
+  limit: z.coerce.number().int().min(1).max(500).default(100).catch(100),
   sort_by: z.string().optional().default('id'),
   sort_order: z.enum(['asc', 'desc']).optional().default('asc'),
 });
