@@ -200,20 +200,26 @@ export async function POST(
     
     for (const item of dispatchResults) {
       if (item.qty_to_dispatch > 0) {
+        console.log(`Dispatching item_id=${item.item_id}, qty=${item.qty_to_dispatch}`);
+        
         // Update qty_dispatched
-        await sql`
+        const updateResult = await sql`
           UPDATE order_items 
           SET qty_dispatched = COALESCE(qty_dispatched, 0) + ${item.qty_to_dispatch}
           WHERE id = ${item.id}
+          RETURNING id, qty_dispatched
         `;
+        console.log(`Updated order_item:`, updateResult);
 
         // Deduct from stock
-        await sql`
+        const stockResult = await sql`
           UPDATE stock_levels 
           SET quantity_on_hand = quantity_on_hand - ${item.qty_to_dispatch},
               last_updated = NOW()
           WHERE item_id = ${item.item_id}
+          RETURNING item_id, quantity_on_hand
         `;
+        console.log(`Updated stock_levels:`, stockResult);
 
         // Record stock movement - use warehouse_id 2 (HEAD-OFFICE) if no stock level exists
         const warehouseResult = await sql`
