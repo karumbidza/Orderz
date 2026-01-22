@@ -29,15 +29,17 @@ export async function POST(request: NextRequest) {
     const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${item_id} AND warehouse_id = 2`;
     console.log(`AFTER: item ${item_id} has ${afterStock[0]?.quantity_on_hand}`);
     
-    // STOP HERE - just like test-update, only 3 queries
-    // Skip order_items update and movement insert
-    
+    // 4. One more SELECT to test 4 queries
+    const dummy = await sql`SELECT 1 as test`;
+    console.log('Dummy query result:', dummy);
+
     return NextResponse.json({
       success: true,
       stock_before: beforeStock[0]?.quantity_on_hand,
       stock_update_result: stockResult,
       stock_after: afterStock[0]?.quantity_on_hand,
-      note: 'Only 3 queries like test-update'
+      note: '4 queries to test',
+      dummy: dummy
     });
   } catch (error) {
     console.error('Simple update error:', error);
