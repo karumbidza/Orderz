@@ -29,22 +29,22 @@ export async function POST(request: NextRequest) {
     const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${item_id} AND warehouse_id = 2`;
     console.log(`AFTER: item ${item_id} has ${afterStock[0]?.quantity_on_hand}`);
     
-    // 4. One more SELECT to test 4 queries
-    const dummy = await sql`SELECT 1 as test`;
-    console.log('Dummy query result:', dummy);
-    
-    // 5. Another SELECT to test 5 queries
-    const dummy2 = await sql`SELECT 2 as test`;
-    console.log('Dummy2 query result:', dummy2);
+    // 4. UPDATE order_items as 4th query
+    const orderItemResult = await sql`
+      UPDATE order_items 
+      SET qty_dispatched = COALESCE(qty_dispatched, 0) + 0
+      WHERE id = 136
+      RETURNING id, qty_dispatched
+    `;
+    console.log('Order item result:', orderItemResult);
 
     return NextResponse.json({
       success: true,
       stock_before: beforeStock[0]?.quantity_on_hand,
       stock_update_result: stockResult,
       stock_after: afterStock[0]?.quantity_on_hand,
-      note: '5 queries to test',
-      dummy: dummy,
-      dummy2: dummy2
+      note: '4 queries with 2 UPDATEs',
+      order_item_result: orderItemResult
     });
   } catch (error) {
     console.error('Simple update error:', error);
