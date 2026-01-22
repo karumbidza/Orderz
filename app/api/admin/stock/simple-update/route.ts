@@ -29,39 +29,15 @@ export async function POST(request: NextRequest) {
     const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${item_id} AND warehouse_id = 2`;
     console.log(`AFTER: item ${item_id} has ${afterStock[0]?.quantity_on_hand}`);
     
-    // 4. Update order_items
-    const orderItemResult = await sql`
-      UPDATE order_items 
-      SET qty_dispatched = COALESCE(qty_dispatched, 0) + ${qty}
-      WHERE id = ${order_item_id}
-      RETURNING id, qty_dispatched
-    `;
-    console.log('Order item UPDATE result:', orderItemResult);
-    
-    // 5. Insert stock movement
-    const movementResult = await sql`
-      INSERT INTO stock_movements (item_id, warehouse_id, quantity, movement_type, reference_type, reference_id, reason, created_at)
-      VALUES (
-        ${item_id},
-        2,
-        ${-qty},
-        'OUT',
-        'ORDER',
-        'TEST2',
-        'Simple update test v2',
-        NOW()
-      )
-      RETURNING id
-    `;
-    console.log('Movement INSERT result:', movementResult);
+    // STOP HERE - just like test-update, only 3 queries
+    // Skip order_items update and movement insert
     
     return NextResponse.json({
       success: true,
       stock_before: beforeStock[0]?.quantity_on_hand,
       stock_update_result: stockResult,
       stock_after: afterStock[0]?.quantity_on_hand,
-      order_item_result: orderItemResult,
-      movement_result: movementResult
+      note: 'Only 3 queries like test-update'
     });
   } catch (error) {
     console.error('Simple update error:', error);
