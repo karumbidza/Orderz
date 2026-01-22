@@ -857,7 +857,42 @@ export default function AdminPage() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      {/* Print Styles */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print-content, .print-content * {
+            visibility: visible;
+          }
+          .print-content {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            padding: 20px;
+            background: white !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .MuiDialog-root, .MuiModal-root {
+            position: static !important;
+          }
+          .MuiBackdrop-root {
+            display: none !important;
+          }
+          .MuiDialog-container {
+            height: auto !important;
+          }
+          .MuiPaper-root {
+            box-shadow: none !important;
+            border: none !important;
+          }
+        }
+      `}</style>
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }} className="no-print">
         {/* App Bar */}
         <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Toolbar>
@@ -1132,19 +1167,32 @@ export default function AdminPage() {
         {/* Order View Modal */}
         <Dialog open={orderModal.open} onClose={() => setOrderModal({ open: false, order: null, loading: false })} maxWidth="md" fullWidth>
           {orderModal.loading ? (
-            <Box sx={{ p: 8, textAlign: 'center' }}>
+            <Box sx={{ p: 8, textAlign: 'center' }} className="no-print">
               <CircularProgress />
               <Typography sx={{ mt: 2 }}>Loading order details...</Typography>
             </Box>
           ) : orderModal.order ? (
             <>
-              <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="no-print">
                 <span>Order {orderModal.order.order_number}</span>
                 <IconButton onClick={() => setOrderModal({ open: false, order: null, loading: false })}>
                   <CloseIcon />
                 </IconButton>
               </DialogTitle>
-              <DialogContent dividers>
+              <DialogContent dividers className="print-content">
+                {/* Print Header - only visible when printing */}
+                <Box className="print-only" sx={{ 
+                  display: 'none', 
+                  textAlign: 'center', 
+                  mb: 3, 
+                  pb: 2, 
+                  borderBottom: '3px solid #006633',
+                  '@media print': { display: 'block' }
+                }}>
+                  <Typography variant="h4" sx={{ color: '#006633', fontWeight: 700 }}>REDAN COUPON</Typography>
+                  <Typography variant="h6">Request Voucher - {orderModal.order.order_number}</Typography>
+                </Box>
+                
                 {/* Order Info */}
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3, mb: 3 }}>
                   <Box>
@@ -1201,7 +1249,7 @@ export default function AdminPage() {
                   </Box>
                 </Paper>
               </DialogContent>
-              <DialogActions sx={{ px: 3, py: 2 }}>
+              <DialogActions sx={{ px: 3, py: 2 }} className="no-print">
                 {(orderModal.order.status === 'PENDING' || orderModal.order.status === 'PARTIAL_DISPATCH') && (
                   <>
                     <Button color="error" onClick={() => {
