@@ -44,6 +44,9 @@ import {
   ArrowUpward as OutIcon,
   Search as SearchIcon,
   FilterList as FilterIcon,
+  Store as SiteIcon,
+  Assessment as TotalsIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -195,7 +198,32 @@ interface StockMovement {
   stock_value: string;
 }
 
-type TabValue = 'orders' | 'inventory' | 'history';
+interface Site {
+  id: number;
+  site_code: string;
+  name: string;
+  city: string;
+  address: string;
+  contact_name: string;
+  phone: string;
+  email: string;
+  status: string;
+  fulfillment_zone: string;
+  is_active: boolean;
+}
+
+interface SiteTotal {
+  site_id: number;
+  site_code: string;
+  site_name: string;
+  city: string;
+  total_orders: number;
+  total_items_dispatched: number;
+  total_value_dispatched: string;
+  last_dispatch_date: string | null;
+}
+
+type TabValue = 'orders' | 'inventory' | 'history' | 'sites' | 'totals';
 
 const STATUS_COLORS: Record<string, 'warning' | 'info' | 'secondary' | 'success' | 'error' | 'default'> = {
   PENDING: 'warning',
@@ -215,6 +243,8 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
   const [stockHistory, setStockHistory] = useState<StockMovement[]>([]);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [siteTotals, setSiteTotals] = useState<SiteTotal[]>([]);
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
     open: false,
@@ -247,6 +277,11 @@ export default function AdminPage() {
     grnNumber: string;
     submitting: boolean;
   }>({ open: false, items: [], grnNumber: '', submitting: false });
+  const [siteModal, setSiteModal] = useState<{
+    open: boolean;
+    site: Site | null;
+    isNew: boolean;
+  }>({ open: false, site: null, isNew: false });
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -294,11 +329,39 @@ export default function AdminPage() {
     setLoading(false);
   };
 
+  const loadSites = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/sites?limit=200');
+      const data = await res.json();
+      if (data.success) setSites(data.data);
+      else showMessage('Error: ' + data.error, 'error');
+    } catch {
+      showMessage('Failed to load sites', 'error');
+    }
+    setLoading(false);
+  };
+
+  const loadSiteTotals = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/site-totals');
+      const data = await res.json();
+      if (data.success) setSiteTotals(data.data);
+      else showMessage('Error: ' + data.error, 'error');
+    } catch {
+      showMessage('Failed to load site totals', 'error');
+    }
+    setLoading(false);
+  };
+
   // Load data on tab change
   useEffect(() => {
     if (activeTab === 'orders') loadOrders();
     else if (activeTab === 'inventory') loadStock();
     else if (activeTab === 'history') loadStockHistory();
+    else if (activeTab === 'sites') loadSites();
+    else if (activeTab === 'totals') loadSiteTotals();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -476,6 +539,82 @@ export default function AdminPage() {
   };
 
   // ─────────────────────────────────────────
+  // SITES MANAGEMENT
+  // ─────────────────────────────────────────
+  const openSiteModal = (site: Site | null, isNew: boolean = false) => {
+    if (isNew) {
+      setSiteModal({
+        open: true,
+        site: {
+          id: 0,
+          site_code: '',
+          name: '',
+          city: '',
+          address: '',
+          contact_name: '',
+          phone: '',
+          email: '',
+          status: 'ACTIVE',
+          fulfillment_zone: 'DELIVERY',
+          is_active: true,
+        },
+        isNew: true,
+      });
+    } else {
+      setSiteModal({ open: true, site, isNew: false });
+    }
+  };
+
+  const saveSite = async () => {
+    if (!siteModal.site) return;
+    const site = siteModal.site;
+    
+    try {
+      if (siteModal.isNew) {
+        const res = await fetch('/api/sites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: site.site_code,
+            name: site.name,
+            address: site.address,
+            contact_person: site.contact_name,
+            email: site.email,
+            phone: site.phone,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showMessage('Site created successfully', 'success');
+          setSiteModal({ open: false, site: null, isNew: false });
+          loadSites();
+        } else showMessage('Error: ' + data.error, 'error');
+      } else {
+        const res = await fetch(`/api/sites/${site.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: site.name,
+            city: site.city,
+            address: site.address,
+            contact_name: site.contact_name,
+            email: site.email,
+            phone: site.phone,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showMessage('Site updated successfully', 'success');
+          setSiteModal({ open: false, site: null, isNew: false });
+          loadSites();
+        } else showMessage('Error: ' + data.error, 'error');
+      }
+    } catch {
+      showMessage('Failed to save site', 'error');
+    }
+  };
+
+  // ─────────────────────────────────────────
   // FILTERED DATA
   // ─────────────────────────────────────────
   const filteredOrders = orders.filter(order => {
@@ -502,6 +641,22 @@ export default function AdminPage() {
       (movement.site_name && movement.site_name.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesType = typeFilter === 'all' || movement.movement_type === typeFilter;
     return matchesSearch && matchesType;
+  });
+
+  const filteredSites = sites.filter(site => {
+    const matchesSearch = searchQuery === '' ||
+      site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      site.site_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      site.city.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSearch;
+  });
+
+  const filteredTotals = siteTotals.filter(total => {
+    const matchesSearch = searchQuery === '' ||
+      total.site_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      total.site_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      total.city.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSearch;
   });
 
   const uniqueCategories = Array.from(new Set(stock.map(s => s.category)));
@@ -634,6 +789,68 @@ export default function AdminPage() {
     )},
   ];
 
+  const sitesColumns: GridColDef[] = [
+    { field: 'site_code', headerName: 'Code', width: 140, renderCell: (params) => (
+      <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
+    )},
+    { field: 'name', headerName: 'Site Name', flex: 1, minWidth: 180, renderCell: (params) => (
+      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
+    )},
+    { field: 'city', headerName: 'City', width: 120, renderCell: (params) => (
+      <Typography variant="body2">{params.value}</Typography>
+    )},
+    { field: 'address', headerName: 'Address', width: 200, renderCell: (params) => (
+      <Tooltip title={params.value || ''} arrow>
+        <Typography variant="body2" color="text.secondary" noWrap sx={{ cursor: 'pointer' }}>{params.value || '—'}</Typography>
+      </Tooltip>
+    )},
+    { field: 'contact_name', headerName: 'Contact', width: 150, renderCell: (params) => (
+      <Typography variant="body2">{params.value || '—'}</Typography>
+    )},
+    { field: 'phone', headerName: 'Phone', width: 120, renderCell: (params) => (
+      <Typography variant="body2" fontFamily="monospace">{params.value || '—'}</Typography>
+    )},
+    { field: 'email', headerName: 'Email', width: 180, renderCell: (params) => (
+      <Typography variant="body2" color="text.secondary" noWrap>{params.value || '—'}</Typography>
+    )},
+    { field: 'status', headerName: 'Status', width: 100, renderCell: (params) => (
+      <Chip label={params.value} color={params.value === 'ACTIVE' ? 'success' : 'default'} size="small" />
+    )},
+    { field: 'actions', headerName: 'Actions', width: 100, sortable: false, renderCell: (params) => (
+      <IconButton size="small" color="primary" onClick={() => openSiteModal(params.row)}>
+        <EditIcon />
+      </IconButton>
+    )},
+  ];
+
+  const totalsColumns: GridColDef[] = [
+    { field: 'site_code', headerName: 'Code', width: 140, renderCell: (params) => (
+      <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
+    )},
+    { field: 'site_name', headerName: 'Site Name', flex: 1, minWidth: 180, renderCell: (params) => (
+      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
+    )},
+    { field: 'city', headerName: 'City', width: 120, renderCell: (params) => (
+      <Typography variant="body2">{params.value}</Typography>
+    )},
+    { field: 'total_orders', headerName: 'Orders', width: 100, align: 'center', headerAlign: 'center', renderCell: (params) => (
+      <Typography variant="body2" fontWeight={600}>{params.value}</Typography>
+    )},
+    { field: 'total_items_dispatched', headerName: 'Items Dispatched', width: 140, align: 'right', headerAlign: 'right', renderCell: (params) => (
+      <Typography variant="body2" fontWeight={600}>{params.value}</Typography>
+    )},
+    { field: 'total_value_dispatched', headerName: 'Total Value', width: 150, align: 'right', headerAlign: 'right', renderCell: (params) => (
+      <Typography variant="body2" fontWeight={600} color="primary.main">
+        ${parseFloat(params.value || 0).toFixed(2)}
+      </Typography>
+    )},
+    { field: 'last_dispatch_date', headerName: 'Last Dispatch', width: 130, renderCell: (params) => {
+      if (!params.value) return <Typography variant="caption" color="text.secondary">—</Typography>;
+      const date = new Date(params.value);
+      return <Typography variant="body2">{date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography>;
+    }},
+  ];
+
   // ─────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────
@@ -650,7 +867,9 @@ export default function AdminPage() {
             <IconButton onClick={() => {
               if (activeTab === 'orders') loadOrders();
               else if (activeTab === 'inventory') loadStock();
-              else loadStockHistory();
+              else if (activeTab === 'history') loadStockHistory();
+              else if (activeTab === 'sites') loadSites();
+              else if (activeTab === 'totals') loadSiteTotals();
             }}>
               <RefreshIcon />
             </IconButton>
@@ -662,18 +881,27 @@ export default function AdminPage() {
           <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box>
               <Typography variant="h4">
-                {activeTab === 'orders' ? 'Orders' : activeTab === 'inventory' ? 'Inventory' : 'Stock History'}
+                {activeTab === 'orders' ? 'Orders' : 
+                 activeTab === 'inventory' ? 'Inventory' : 
+                 activeTab === 'history' ? 'Stock History' :
+                 activeTab === 'sites' ? 'Sites' : 'Site Totals'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {activeTab === 'orders' ? 'Manage incoming orders and dispatches' : 
                  activeTab === 'inventory' ? 'Track stock levels and manage inventory' : 
-                 'View stock movement history'}
+                 activeTab === 'history' ? 'View stock movement history' :
+                 activeTab === 'sites' ? 'Manage site information' : 'View dispatched totals by site'}
               </Typography>
             </Box>
             <Stack direction="row" spacing={2}>
               {activeTab === 'inventory' && (
                 <Button variant="contained" startIcon={<AddIcon />} onClick={openBulkReceiveModal}>
                   Bulk Receive
+                </Button>
+              )}
+              {activeTab === 'sites' && (
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => openSiteModal(null, true)}>
+                  Add Site
                 </Button>
               )}
             </Stack>
@@ -685,6 +913,8 @@ export default function AdminPage() {
               <Tab icon={<ReceiptIcon />} iconPosition="start" label="Orders" value="orders" />
               <Tab icon={<InventoryIcon />} iconPosition="start" label="Inventory" value="inventory" />
               <Tab icon={<HistoryIcon />} iconPosition="start" label="Stock History" value="history" />
+              <Tab icon={<SiteIcon />} iconPosition="start" label="Sites" value="sites" />
+              <Tab icon={<TotalsIcon />} iconPosition="start" label="Totals" value="totals" />
             </Tabs>
           </Paper>
 
@@ -693,7 +923,12 @@ export default function AdminPage() {
             <Stack direction="row" spacing={2} alignItems="center">
               <TextField
                 size="small"
-                placeholder={activeTab === 'orders' ? 'Search orders...' : activeTab === 'inventory' ? 'Search products...' : 'Search movements...'}
+                placeholder={
+                  activeTab === 'orders' ? 'Search orders...' : 
+                  activeTab === 'inventory' ? 'Search products...' : 
+                  activeTab === 'history' ? 'Search movements...' :
+                  activeTab === 'sites' ? 'Search sites...' : 'Search totals...'
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 InputProps={{
@@ -753,7 +988,9 @@ export default function AdminPage() {
               <Typography variant="body2" color="text.secondary">
                 {activeTab === 'orders' ? `${filteredOrders.length} orders` : 
                  activeTab === 'inventory' ? `${filteredStock.length} items` : 
-                 `${filteredHistory.length} movements`}
+                 activeTab === 'history' ? `${filteredHistory.length} movements` :
+                 activeTab === 'sites' ? `${filteredSites.length} sites` :
+                 `${filteredTotals.length} sites`}
               </Typography>
             </Stack>
           </Paper>
@@ -766,8 +1003,19 @@ export default function AdminPage() {
               </Box>
             ) : (
               <DataGrid
-                rows={activeTab === 'orders' ? filteredOrders : activeTab === 'inventory' ? filteredStock.map(s => ({ ...s, id: s.item_id })) : filteredHistory}
-                columns={activeTab === 'orders' ? ordersColumns : activeTab === 'inventory' ? inventoryColumns : historyColumns}
+                rows={
+                  activeTab === 'orders' ? filteredOrders : 
+                  activeTab === 'inventory' ? filteredStock.map(s => ({ ...s, id: s.item_id })) : 
+                  activeTab === 'history' ? filteredHistory :
+                  activeTab === 'sites' ? filteredSites :
+                  filteredTotals.map(t => ({ ...t, id: t.site_id }))
+                }
+                columns={
+                  activeTab === 'orders' ? ordersColumns : 
+                  activeTab === 'inventory' ? inventoryColumns : 
+                  activeTab === 'history' ? historyColumns :
+                  activeTab === 'sites' ? sitesColumns : totalsColumns
+                }
                 pageSizeOptions={[10, 25, 50, 100]}
                 initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
                 disableRowSelectionOnClick
@@ -1063,6 +1311,78 @@ export default function AdminPage() {
               </DialogActions>
             </>
           ) : null}
+        </Dialog>
+
+        {/* Site Edit Modal */}
+        <Dialog open={siteModal.open} onClose={() => setSiteModal({ open: false, site: null, isNew: false })} maxWidth="sm" fullWidth>
+          <DialogTitle>{siteModal.isNew ? 'Add New Site' : 'Edit Site'}</DialogTitle>
+          <DialogContent>
+            {siteModal.site && (
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <TextField
+                  fullWidth
+                  label="Site Code"
+                  value={siteModal.site.site_code}
+                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, site_code: e.target.value } })}
+                  disabled={!siteModal.isNew}
+                  placeholder="e.g. HARARE-MAIN"
+                />
+                <TextField
+                  fullWidth
+                  label="Site Name"
+                  value={siteModal.site.name}
+                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, name: e.target.value } })}
+                  placeholder="e.g. Harare Main Branch"
+                />
+                <TextField
+                  fullWidth
+                  label="City"
+                  value={siteModal.site.city}
+                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, city: e.target.value } })}
+                  placeholder="e.g. Harare"
+                />
+                <TextField
+                  fullWidth
+                  label="Address"
+                  value={siteModal.site.address}
+                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, address: e.target.value } })}
+                  placeholder="Full street address"
+                  multiline
+                  rows={2}
+                />
+                <Stack direction="row" spacing={2}>
+                  <TextField
+                    fullWidth
+                    label="Contact Name"
+                    value={siteModal.site.contact_name}
+                    onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, contact_name: e.target.value } })}
+                    placeholder="Contact person"
+                  />
+                  <TextField
+                    fullWidth
+                    label="Phone"
+                    value={siteModal.site.phone}
+                    onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, phone: e.target.value } })}
+                    placeholder="Phone number"
+                  />
+                </Stack>
+                <TextField
+                  fullWidth
+                  label="Email"
+                  value={siteModal.site.email}
+                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, email: e.target.value } })}
+                  placeholder="email@example.com"
+                  type="email"
+                />
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setSiteModal({ open: false, site: null, isNew: false })}>Cancel</Button>
+            <Button variant="contained" onClick={saveSite}>
+              {siteModal.isNew ? 'Create Site' : 'Save Changes'}
+            </Button>
+          </DialogActions>
         </Dialog>
 
         {/* Snackbar */}
