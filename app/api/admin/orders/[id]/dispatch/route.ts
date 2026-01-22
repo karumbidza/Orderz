@@ -200,26 +200,30 @@ export async function POST(
     
     for (const item of dispatchResults) {
       if (item.qty_to_dispatch > 0) {
-        console.log(`Dispatching item_id=${item.item_id}, qty=${item.qty_to_dispatch}`);
+        const qtyToDispatch = Number(item.qty_to_dispatch);
+        console.log(`Dispatching item_id=${item.item_id}, order_item_id=${item.id}, qty=${qtyToDispatch}`);
         
-        // Update qty_dispatched
-        const updateResult = await sql`
+        // Update qty_dispatched on order_items
+        await sql`
           UPDATE order_items 
-          SET qty_dispatched = COALESCE(qty_dispatched, 0) + ${item.qty_to_dispatch}
+          SET qty_dispatched = COALESCE(qty_dispatched, 0) + ${qtyToDispatch}
           WHERE id = ${item.id}
-          RETURNING id, qty_dispatched
         `;
-        console.log(`Updated order_item:`, updateResult);
 
-        // Deduct from stock
-        const stockResult = await sql`
+        // Deduct from stock - using explicit number and setting to a computed value
+        const beforeStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${item.item_id}`;
+        console.log('Stock before:', beforeStock);
+        
+        const newQty = Number(beforeStock[0]?.quantity_on_hand || 0) - qtyToDispatch;
+        await sql`
           UPDATE stock_levels 
-          SET quantity_on_hand = quantity_on_hand - ${item.qty_to_dispatch},
+          SET quantity_on_hand = ${newQty},
               last_updated = NOW()
           WHERE item_id = ${item.item_id}
-          RETURNING item_id, quantity_on_hand
         `;
-        console.log(`Updated stock_levels:`, stockResult);
+        
+        const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${item.item_id}`;
+        console.log('Stock after:', afterStock);
 
         // Record stock movement - use warehouse_id 2 (HEAD-OFFICE) if no stock level exists
         const warehouseResult = await sql`
@@ -232,7 +236,7 @@ export async function POST(
           VALUES (
             ${item.item_id},
             ${warehouseId},
-            ${-item.qty_to_dispatch},
+            ${-qtyToDispatch},
             'OUT',
             'ORDER',
             ${String(orderId)},
