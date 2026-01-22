@@ -575,12 +575,13 @@ export default function AdminPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            code: site.site_code,
             name: site.name,
+            city: site.city,
             address: site.address,
-            contact_person: site.contact_name,
+            contact_name: site.contact_name,
             email: site.email,
             phone: site.phone,
+            // site_code will be auto-generated from name if not provided
           }),
         });
         const data = await res.json();

@@ -25,12 +25,14 @@ export const ItemUpdateSchema = ItemCreateSchema.partial();
 // SITES
 // ─────────────────────────────────────────────
 export const SiteCreateSchema = z.object({
-  code: z.string().min(1).max(20),
+  site_code: z.string().min(1).max(50).optional(),
   name: z.string().min(1).max(255),
+  city: z.string().max(100).nullable().optional(),
   address: z.string().max(500).nullable().optional(),
-  contact_person: z.string().max(255).nullable().optional(),
+  contact_name: z.string().max(255).nullable().optional(),
   email: z.string().email().nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
+  fulfillment_zone: z.enum(['COLLECTION', 'DISPATCH']).nullable().optional(),
   is_active: z.boolean().default(true),
 });
 

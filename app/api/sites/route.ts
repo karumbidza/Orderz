@@ -77,15 +77,28 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = SiteCreateSchema.parse(body);
     
+    // Auto-generate site_code from name if not provided
+    let siteCode = validated.site_code;
+    if (!siteCode && validated.name) {
+      // Convert "Ardbennie Depot" to "ARDBENNIE-DEPOT"
+      siteCode = validated.name
+        .toUpperCase()
+        .replace(/[^A-Z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .substring(0, 50);
+    }
+    
     const result = await sql`
-      INSERT INTO sites (code, name, address, contact_person, email, phone, is_active)
+      INSERT INTO sites (site_code, name, city, address, contact_name, email, phone, fulfillment_zone, is_active)
       VALUES (
-        ${validated.code},
+        ${siteCode},
         ${validated.name},
+        ${validated.city || null},
         ${validated.address || null},
-        ${validated.contact_person || null},
+        ${validated.contact_name || null},
         ${validated.email || null},
         ${validated.phone || null},
+        ${validated.fulfillment_zone || 'DISPATCH'},
         ${validated.is_active ?? true}
       )
       RETURNING *
