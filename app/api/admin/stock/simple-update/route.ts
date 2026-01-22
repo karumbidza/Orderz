@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { neon } from '@neondatabase/serverless';
 
 export const dynamic = 'force-dynamic';
 
 // Simple endpoint that does exactly what dispatch does for ONE item
 export async function POST(request: NextRequest) {
+  // Create sql function locally, fresh for each request
+  const sql = neon(process.env.DATABASE_URL!);
+  
   try {
     const body = await request.json();
     const { item_id, qty, order_item_id } = body;
