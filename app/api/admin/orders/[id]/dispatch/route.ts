@@ -74,7 +74,10 @@ export async function GET(
 
 // ─────────────────────────────────────────────
 // POST /api/admin/orders/[id]/dispatch - Dispatch order (deduct stock)
-// Body: { force_partial?: boolean } - If true, dispatch available items only
+// Body: { 
+//   force_partial?: boolean,  - If true, dispatch available items only
+//   items?: { order_item_id: number, qty_to_dispatch: number }[]  - Custom quantities per item
+// }
 // ─────────────────────────────────────────────
 export async function POST(
   request: NextRequest,
@@ -89,6 +92,8 @@ export async function POST(
 
     const body = await request.json().catch(() => ({}));
     const forcePartial = body.force_partial === true;
+    const customItems: { order_item_id: number; qty_to_dispatch: number }[] = body.items || [];
+    const hasCustomQty = customItems.length > 0;
 
     // Get order
     const orderResult = await sql`
@@ -101,6 +106,7 @@ export async function POST(
 
     const order = orderResult[0];
 
+    // Allow dispatching from PENDING, PARTIAL_DISPATCH states
     if (order.status === 'DISPATCHED' || order.status === 'RECEIVED') {
       return NextResponse.json({ 
         success: false, 
@@ -123,7 +129,7 @@ export async function POST(
       WHERE oi.order_id = ${orderId}
     `;
 
-    // Check if we can dispatch
+    // Build dispatch plan
     let allFulfilled = true;
     let anyDispatchable = false;
     const dispatchResults: any[] = [];
@@ -136,26 +142,37 @@ export async function POST(
         dispatchResults.push({
           ...item,
           qty_to_dispatch: 0,
+          remaining_after: 0,
           status: 'ALREADY_FULFILLED'
         });
         continue;
       }
 
-      const canDispatch = Math.min(remaining, item.stock_available);
+      // If custom quantities provided, use those
+      let qtyToDispatch: number;
+      if (hasCustomQty) {
+        const customItem = customItems.find(c => c.order_item_id === item.id);
+        qtyToDispatch = customItem ? Math.min(customItem.qty_to_dispatch, remaining, item.stock_available) : 0;
+        // Ensure non-negative
+        qtyToDispatch = Math.max(0, qtyToDispatch);
+      } else {
+        qtyToDispatch = Math.min(remaining, item.stock_available);
+      }
       
-      if (canDispatch > 0) {
+      if (qtyToDispatch > 0) {
         anyDispatchable = true;
       }
       
-      if (canDispatch < remaining) {
+      const remainingAfter = remaining - qtyToDispatch;
+      if (remainingAfter > 0) {
         allFulfilled = false;
       }
 
       dispatchResults.push({
         ...item,
-        qty_to_dispatch: canDispatch,
-        remaining_after: remaining - canDispatch,
-        status: canDispatch >= remaining ? 'FULL' : canDispatch > 0 ? 'PARTIAL' : 'UNAVAILABLE'
+        qty_to_dispatch: qtyToDispatch,
+        remaining_after: remainingAfter,
+        status: qtyToDispatch >= remaining ? 'FULL' : qtyToDispatch > 0 ? 'PARTIAL' : 'UNAVAILABLE'
       });
     }
 
@@ -163,16 +180,16 @@ export async function POST(
     if (!anyDispatchable) {
       return NextResponse.json({ 
         success: false, 
-        error: 'No items available to dispatch. All items are out of stock.',
+        error: 'No items to dispatch. Either no stock or all quantities set to 0.',
         items: dispatchResults
       }, { status: 400 });
     }
 
-    // If not all items available and not forcing partial
-    if (!allFulfilled && !forcePartial) {
+    // If not all items being fully dispatched and not forcing partial (and no custom qty)
+    if (!allFulfilled && !forcePartial && !hasCustomQty) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Not all items available. Use force_partial=true to dispatch available items.',
+        error: 'Not all items available. Use force_partial=true or specify custom quantities.',
         items: dispatchResults,
         require_confirmation: true
       }, { status: 400 });
@@ -198,33 +215,52 @@ export async function POST(
           WHERE item_id = ${item.item_id}
         `;
 
-        // Record stock movement
+        // Record stock movement - use warehouse_id 2 (HEAD-OFFICE) if no stock level exists
+        const warehouseResult = await sql`
+          SELECT warehouse_id FROM stock_levels WHERE item_id = ${item.item_id} LIMIT 1
+        `;
+        const warehouseId = warehouseResult.length > 0 ? warehouseResult[0].warehouse_id : 2;
+
         await sql`
           INSERT INTO stock_movements (item_id, warehouse_id, quantity, movement_type, reference_type, reference_id, reason, created_at)
-          SELECT 
+          VALUES (
             ${item.item_id},
-            warehouse_id,
+            ${warehouseId},
             ${-item.qty_to_dispatch},
             'OUT',
             'ORDER',
-            ${orderId},
+            ${String(orderId)},
             ${'Dispatched for order ' + order.voucher_number},
             NOW()
-          FROM stock_levels WHERE item_id = ${item.item_id}
-          LIMIT 1
+          )
         `;
 
         dispatched.push({
+          order_item_id: item.id,
           sku: item.sku,
           item_name: item.item_name,
-          qty_dispatched: item.qty_to_dispatch
+          qty_dispatched: item.qty_to_dispatch,
+          qty_remaining: item.remaining_after
         });
       }
     }
 
+    // Check if all items are now fully dispatched
+    const updatedItems = await sql`
+      SELECT 
+        qty_requested, 
+        COALESCE(qty_dispatched, 0) as qty_dispatched
+      FROM order_items
+      WHERE order_id = ${orderId}
+    `;
+    
+    const orderFullyDispatched = updatedItems.every(
+      (i: any) => i.qty_dispatched >= i.qty_requested
+    );
+
     // Update order status
-    const newStatus = allFulfilled ? 'DISPATCHED' : 'PARTIAL_DISPATCH';
-    const autoReceiveDate = allFulfilled ? 
+    const newStatus = orderFullyDispatched ? 'DISPATCHED' : 'PARTIAL_DISPATCH';
+    const autoReceiveDate = orderFullyDispatched ? 
       await calculateWorkingDaysAhead(5) : null;
 
     await sql`
@@ -238,16 +274,20 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: allFulfilled ? 
+      message: orderFullyDispatched ? 
         'Order fully dispatched' : 
-        'Order partially dispatched - some items unavailable',
+        'Order partially dispatched - some items pending',
       data: {
         order_id: orderId,
         voucher_number: order.voucher_number,
         new_status: newStatus,
         auto_receive_date: autoReceiveDate,
         items_dispatched: dispatched,
-        items_pending: dispatchResults.filter(i => i.remaining_after > 0)
+        items_pending: dispatchResults.filter(i => i.remaining_after > 0).map(i => ({
+          sku: i.sku,
+          item_name: i.item_name,
+          qty_remaining: i.remaining_after
+        }))
       }
     });
 

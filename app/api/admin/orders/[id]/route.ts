@@ -42,11 +42,12 @@ export async function GET(
 
     const order = orderResult[0];
 
-    // Get order items - order_items has: id, order_id, employee_id, item_id, qty_requested, qty_approved, unit_cost, line_total, size, employee_name, notes, sku, item_name
+    // Get order items - order_items has: id, order_id, employee_id, item_id, qty_requested, qty_dispatched, qty_approved, unit_cost, line_total, size, employee_name, notes, sku, item_name
     const items = await sql`
       SELECT 
         oi.id,
         oi.qty_requested as quantity,
+        COALESCE(oi.qty_dispatched, 0) as qty_dispatched,
         oi.qty_approved,
         oi.unit_cost,
         oi.line_total as total_cost,
