@@ -242,7 +242,8 @@ export async function POST(
           sku: item.sku,
           item_name: item.item_name,
           qty_dispatched: item.qty_to_dispatch,
-          qty_remaining: item.remaining_after
+          qty_remaining: item.remaining_after,
+          stock_update_result: stockUpdate
         });
       }
     }
