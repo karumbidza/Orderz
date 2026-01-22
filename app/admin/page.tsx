@@ -254,20 +254,7 @@ export default function AdminPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
 
-  // Load data on tab change
-  useEffect(() => {
-    if (activeTab === 'orders') loadOrders();
-    else if (activeTab === 'inventory') loadStock();
-    else if (activeTab === 'history') loadStockHistory();
-  }, [activeTab]);
-
-  const showMessage = (message: string, severity: 'success' | 'error' | 'info' = 'info') => {
-    setSnackbar({ open: true, message, severity });
-  };
-
-  // ─────────────────────────────────────────
-  // ORDERS API
-  // ─────────────────────────────────────────
+  // Load data functions
   const loadOrders = async () => {
     setLoading(true);
     try {
@@ -281,6 +268,47 @@ export default function AdminPage() {
     setLoading(false);
   };
 
+  const loadStock = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/stock');
+      const data = await res.json();
+      if (data.success) setStock(data.data);
+      else showMessage('Error: ' + data.error, 'error');
+    } catch {
+      showMessage('Failed to load stock', 'error');
+    }
+    setLoading(false);
+  };
+
+  const loadStockHistory = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/stock/history?limit=100&days=30');
+      const data = await res.json();
+      if (data.success) setStockHistory(data.data);
+      else showMessage('Error: ' + data.error, 'error');
+    } catch {
+      showMessage('Failed to load stock history', 'error');
+    }
+    setLoading(false);
+  };
+
+  // Load data on tab change
+  useEffect(() => {
+    if (activeTab === 'orders') loadOrders();
+    else if (activeTab === 'inventory') loadStock();
+    else if (activeTab === 'history') loadStockHistory();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const showMessage = (message: string, severity: 'success' | 'error' | 'info' = 'info') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  // ─────────────────────────────────────────
+  // ORDERS API
+  // ─────────────────────────────────────────
   const viewOrder = async (orderId: number) => {
     setOrderModal({ open: true, order: null, loading: true });
     try {
@@ -361,32 +389,6 @@ export default function AdminPage() {
   // ─────────────────────────────────────────
   // INVENTORY API
   // ─────────────────────────────────────────
-  const loadStock = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/admin/stock');
-      const data = await res.json();
-      if (data.success) setStock(data.data);
-      else showMessage('Error: ' + data.error, 'error');
-    } catch {
-      showMessage('Failed to load stock', 'error');
-    }
-    setLoading(false);
-  };
-
-  const loadStockHistory = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/admin/stock/history?limit=100&days=30');
-      const data = await res.json();
-      if (data.success) setStockHistory(data.data);
-      else showMessage('Error: ' + data.error, 'error');
-    } catch {
-      showMessage('Failed to load stock history', 'error');
-    }
-    setLoading(false);
-  };
-
   const addStock = async (itemId: number, quantity: number) => {
     try {
       const res = await fetch('/api/admin/stock', {
