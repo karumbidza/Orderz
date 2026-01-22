@@ -16,27 +16,28 @@ export async function POST(request: NextRequest) {
     const beforeStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${item_id} AND warehouse_id = 2`;
     console.log(`BEFORE: item ${item_id} has ${beforeStock[0]?.quantity_on_hand}`);
     
-    // Use sql.transaction() to batch all mutations together
-    const [stockResult, orderItemResult, movementResult] = await sql.transaction([
-      sql`
+    // Use sql.transaction() to batch all mutations together using callback syntax
+    const txnResults = await sql.transaction((txn) => [
+      txn`
         UPDATE stock_levels 
         SET quantity_on_hand = quantity_on_hand - ${qty},
             last_updated = NOW()
         WHERE item_id = ${item_id} AND warehouse_id = 2
         RETURNING item_id, quantity_on_hand, last_updated
       `,
-      sql`
+      txn`
         UPDATE order_items 
         SET qty_dispatched = COALESCE(qty_dispatched, 0) + 0
         WHERE id = 136
         RETURNING id, qty_dispatched
       `,
-      sql`
+      txn`
         INSERT INTO stock_movements (item_id, warehouse_id, quantity, movement_type, reference_type, reference_id, reason, created_at)
-        VALUES (73, 2, -1, 'OUT', 'ORDER', 'TEST4-TXN', 'Test with transaction', NOW())
+        VALUES (73, 2, -1, 'OUT', 'ORDER', 'TEST5-CBK', 'Test with callback transaction', NOW())
         RETURNING id
       `
     ]);
+    const [stockResult, orderItemResult, movementResult] = txnResults;
     console.log('Transaction results:', { stockResult, orderItemResult, movementResult });
     
     // Verify after
