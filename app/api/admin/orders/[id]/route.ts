@@ -73,3 +73,4 @@ export async function GET(
     return NextResponse.json({ success: false, error: 'Failed to fetch order details: ' + String(error) }, { status: 500 });
   }
 }
+// Force rebuild Thu Jan 22 15:05:02 CAT 2026
