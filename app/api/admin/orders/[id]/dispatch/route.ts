@@ -211,13 +211,15 @@ export async function POST(
           WHERE id = ${item.id}
         `;
 
-        // Deduct from stock - explicit subtraction in SQL
-        await sql`
+        // Deduct from stock - use RETURNING to ensure query completes
+        const stockUpdate = await sql`
           UPDATE stock_levels 
           SET quantity_on_hand = GREATEST(0, quantity_on_hand - ${qtyToDispatch}),
               last_updated = NOW()
           WHERE item_id = ${itemId} AND warehouse_id = 2
+          RETURNING item_id, quantity_on_hand
         `;
+        console.log('Stock updated:', stockUpdate);
 
         // Record stock movement
         await sql`
