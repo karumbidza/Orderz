@@ -80,12 +80,21 @@ export async function POST(request: NextRequest) {
     // Auto-generate site_code from name if not provided
     let siteCode = validated.site_code;
     if (!siteCode && validated.name) {
-      // Convert "Ardbennie Depot" to "ARDBENNIE-DEPOT" and limit to 50 chars
-      siteCode = validated.name
+      // Convert "Ardbennie Depot" to "ARDBENNIE-DEPOT" and limit to 40 chars
+      const baseCode = validated.name
         .toUpperCase()
         .replace(/[^A-Z0-9\s-]/g, '')
         .replace(/\s+/g, '-')
-        .substring(0, 50);
+        .substring(0, 40);
+      
+      // Check if this code already exists
+      const existing = await sql`SELECT site_code FROM sites WHERE site_code LIKE ${baseCode + '%'}`;
+      if (existing.length === 0) {
+        siteCode = baseCode;
+      } else {
+        // Append a number to make it unique
+        siteCode = `${baseCode}-${existing.length + 1}`;
+      }
     }
     
     const result = await sql`

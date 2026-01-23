@@ -667,17 +667,17 @@ export default function AdminPage() {
 
   const filteredSites = sites.filter(site => {
     const matchesSearch = searchQuery === '' ||
-      site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      site.site_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      site.city.toLowerCase().includes(searchQuery.toLowerCase());
+      (site.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (site.site_code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (site.city || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
   const filteredTotals = siteTotals.filter(total => {
     const matchesSearch = searchQuery === '' ||
-      total.site_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      total.site_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      total.city.toLowerCase().includes(searchQuery.toLowerCase());
+      (total.site_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (total.site_code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (total.city || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
