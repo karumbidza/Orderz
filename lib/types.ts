@@ -35,24 +35,29 @@ export interface ItemCreate {
 // ─────────────────────────────────────────────
 export interface Site {
   id: number;
-  code: string;
+  site_code: string;
   name: string;
+  city: string | null;
   address: string | null;
-  contact_person: string | null;
+  contact_name: string | null;
   email: string | null;
   phone: string | null;
+  status: string;
+  fulfillment_zone: string | null;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
 }
 
 export interface SiteCreate {
-  code: string;
+  site_code?: string;
   name: string;
+  city?: string | null;
   address?: string | null;
-  contact_person?: string | null;
+  contact_name?: string | null;
   email?: string | null;
   phone?: string | null;
+  fulfillment_zone?: string | null;
   is_active?: boolean;
 }
 

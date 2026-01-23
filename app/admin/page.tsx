@@ -200,12 +200,15 @@ interface StockMovement {
 
 interface Site {
   id: number;
-  code: string;
+  site_code: string;
   name: string;
+  city: string;
   address: string;
-  contact_person: string;
+  contact_name: string;
   phone: string;
   email: string;
+  status: string;
+  fulfillment_zone: string;
   is_active: boolean;
 }
 
@@ -563,12 +566,15 @@ export default function AdminPage() {
         open: true,
         site: {
           id: 0,
-          code: '',
+          site_code: '',
           name: '',
+          city: '',
           address: '',
-          contact_person: '',
+          contact_name: '',
           phone: '',
           email: '',
+          status: 'ACTIVE',
+          fulfillment_zone: 'DISPATCH',
           is_active: true,
         },
         isNew: true,
@@ -589,10 +595,12 @@ export default function AdminPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: site.name,
+            city: site.city,
             address: site.address,
-            contact_name: site.contact_person,
+            contact_name: site.contact_name,
             email: site.email,
             phone: site.phone,
+            fulfillment_zone: site.fulfillment_zone,
             // site_code will be auto-generated from name if not provided
           }),
         });
@@ -608,10 +616,12 @@ export default function AdminPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: site.name,
+            city: site.city,
             address: site.address,
-            contact_name: site.contact_person,
+            contact_name: site.contact_name,
             email: site.email,
             phone: site.phone,
+            fulfillment_zone: site.fulfillment_zone,
           }),
         });
         const data = await res.json();
@@ -658,8 +668,8 @@ export default function AdminPage() {
   const filteredSites = sites.filter(site => {
     const matchesSearch = searchQuery === '' ||
       site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      site.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (site.address || '').toLowerCase().includes(searchQuery.toLowerCase());
+      site.site_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      site.city.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
@@ -802,18 +812,21 @@ export default function AdminPage() {
   ];
 
   const sitesColumns: GridColDef[] = [
-    { field: 'code', headerName: 'Code', width: 140, renderCell: (params) => (
+    { field: 'site_code', headerName: 'Code', width: 140, renderCell: (params) => (
       <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
     )},
     { field: 'name', headerName: 'Site Name', flex: 1, minWidth: 180, renderCell: (params) => (
       <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
+    )},
+    { field: 'city', headerName: 'City', width: 120, renderCell: (params) => (
+      <Typography variant="body2">{params.value}</Typography>
     )},
     { field: 'address', headerName: 'Address', width: 200, renderCell: (params) => (
       <Tooltip title={params.value || ''} arrow>
         <Typography variant="body2" color="text.secondary" noWrap sx={{ cursor: 'pointer' }}>{params.value || '—'}</Typography>
       </Tooltip>
     )},
-    { field: 'contact_person', headerName: 'Contact', width: 150, renderCell: (params) => (
+    { field: 'contact_name', headerName: 'Contact', width: 150, renderCell: (params) => (
       <Typography variant="body2">{params.value || '—'}</Typography>
     )},
     { field: 'phone', headerName: 'Phone', width: 120, renderCell: (params) => (
@@ -822,8 +835,8 @@ export default function AdminPage() {
     { field: 'email', headerName: 'Email', width: 180, renderCell: (params) => (
       <Typography variant="body2" color="text.secondary" noWrap>{params.value || '—'}</Typography>
     )},
-    { field: 'is_active', headerName: 'Status', width: 100, renderCell: (params) => (
-      <Chip label={params.value ? 'ACTIVE' : 'INACTIVE'} color={params.value ? 'success' : 'default'} size="small" />
+    { field: 'status', headerName: 'Status', width: 100, renderCell: (params) => (
+      <Chip label={params.value} color={params.value === 'ACTIVE' ? 'success' : 'default'} size="small" />
     )},
     { field: 'actions', headerName: 'Actions', width: 100, sortable: false, renderCell: (params) => (
       <IconButton size="small" color="primary" onClick={() => openSiteModal(params.row)}>
@@ -1455,7 +1468,7 @@ export default function AdminPage() {
                   <TextField
                     fullWidth
                     label="Site Code"
-                    value={siteModal.site.code}
+                    value={siteModal.site.site_code}
                     disabled
                     helperText="Auto-generated from site name"
                   />
@@ -1471,6 +1484,13 @@ export default function AdminPage() {
                 />
                 <TextField
                   fullWidth
+                  label="City"
+                  value={siteModal.site.city}
+                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, city: e.target.value } })}
+                  placeholder="e.g. Harare"
+                />
+                <TextField
+                  fullWidth
                   label="Address"
                   value={siteModal.site.address}
                   onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, address: e.target.value } })}
@@ -1481,9 +1501,9 @@ export default function AdminPage() {
                 <Stack direction="row" spacing={2}>
                   <TextField
                     fullWidth
-                    label="Contact Person"
-                    value={siteModal.site.contact_person}
-                    onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, contact_person: e.target.value } })}
+                    label="Contact Name"
+                    value={siteModal.site.contact_name}
+                    onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, contact_name: e.target.value } })}
                     placeholder="Contact person"
                   />
                   <TextField

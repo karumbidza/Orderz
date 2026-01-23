@@ -77,34 +77,28 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = SiteCreateSchema.parse(body);
     
-    // Auto-generate code from name if not provided
+    // Auto-generate site_code from name if not provided
     let siteCode = validated.site_code;
     if (!siteCode && validated.name) {
-      // Convert "Ardbennie Depot" to "ARDBENNIE-DEPOT" and limit to 20 chars
+      // Convert "Ardbennie Depot" to "ARDBENNIE-DEPOT" and limit to 50 chars
       siteCode = validated.name
         .toUpperCase()
         .replace(/[^A-Z0-9\s-]/g, '')
         .replace(/\s+/g, '-')
-        .substring(0, 20);
-      
-      // Check if code already exists, append number if needed
-      const existing = await sql`SELECT code FROM sites WHERE code = ${siteCode}`;
-      if (existing.length > 0) {
-        // Find next available number
-        const similar = await sql`SELECT code FROM sites WHERE code LIKE ${siteCode.substring(0, 17) + '%'}`;
-        siteCode = `${siteCode.substring(0, 17)}-${similar.length + 1}`;
-      }
+        .substring(0, 50);
     }
     
     const result = await sql`
-      INSERT INTO sites (code, name, address, contact_person, email, phone, is_active)
+      INSERT INTO sites (site_code, name, city, address, contact_name, email, phone, fulfillment_zone, is_active)
       VALUES (
         ${siteCode},
         ${validated.name},
+        ${validated.city || null},
         ${validated.address || null},
         ${validated.contact_name || null},
         ${validated.email || null},
         ${validated.phone || null},
+        ${validated.fulfillment_zone || 'DISPATCH'},
         ${validated.is_active ?? true}
       )
       RETURNING *
@@ -112,9 +106,6 @@ export async function POST(request: NextRequest) {
     
     return successResponse(result[0]);
   } catch (error) {
-    // Temporary verbose error for debugging
-    const errMsg = error instanceof Error ? error.message : String(error);
-    console.error('Site creation error:', errMsg);
-    return errorResponse(`Site creation failed: ${errMsg}`, 500);
+    return handleApiError(error);
   }
 }
