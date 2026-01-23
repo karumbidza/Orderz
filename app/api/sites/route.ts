@@ -89,16 +89,14 @@ export async function POST(request: NextRequest) {
     }
     
     const result = await sql`
-      INSERT INTO sites (site_code, name, city, address, contact_name, email, phone, fulfillment_zone, is_active)
+      INSERT INTO sites (code, name, address, contact_person, email, phone, is_active)
       VALUES (
         ${siteCode},
         ${validated.name},
-        ${validated.city || null},
         ${validated.address || null},
         ${validated.contact_name || null},
         ${validated.email || null},
         ${validated.phone || null},
-        ${validated.fulfillment_zone || 'DISPATCH'},
         ${validated.is_active ?? true}
       )
       RETURNING *

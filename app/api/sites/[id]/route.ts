@@ -54,13 +54,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const result = await sql`
       UPDATE sites SET
         name = COALESCE(${validated.name}, name),
-        site_code = COALESCE(${validated.site_code}, site_code),
-        city = COALESCE(${validated.city}, city),
+        code = COALESCE(${validated.site_code}, code),
         address = COALESCE(${validated.address}, address),
-        contact_name = COALESCE(${validated.contact_name}, contact_name),
+        contact_person = COALESCE(${validated.contact_name}, contact_person),
         email = COALESCE(${validated.email}, email),
         phone = COALESCE(${validated.phone}, phone),
-        fulfillment_zone = COALESCE(${validated.fulfillment_zone}, fulfillment_zone),
         is_active = COALESCE(${validated.is_active}, is_active)
       WHERE id = ${siteId}
       RETURNING *
