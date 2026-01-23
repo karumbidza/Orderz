@@ -77,15 +77,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = SiteCreateSchema.parse(body);
     
-    // Auto-generate site_code from name if not provided
+    // Auto-generate code from name if not provided
     let siteCode = validated.site_code;
     if (!siteCode && validated.name) {
-      // Convert "Ardbennie Depot" to "ARDBENNIE-DEPOT"
+      // Convert "Ardbennie Depot" to "ARDBENNIE-DEPOT" and limit to 20 chars
       siteCode = validated.name
         .toUpperCase()
         .replace(/[^A-Z0-9\s-]/g, '')
         .replace(/\s+/g, '-')
-        .substring(0, 50);
+        .substring(0, 20);
+      
+      // Check if code already exists, append number if needed
+      const existing = await sql`SELECT code FROM sites WHERE code = ${siteCode}`;
+      if (existing.length > 0) {
+        // Find next available number
+        const similar = await sql`SELECT code FROM sites WHERE code LIKE ${siteCode.substring(0, 17) + '%'}`;
+        siteCode = `${siteCode.substring(0, 17)}-${similar.length + 1}`;
+      }
     }
     
     const result = await sql`
@@ -104,6 +112,9 @@ export async function POST(request: NextRequest) {
     
     return successResponse(result[0]);
   } catch (error) {
-    return handleApiError(error);
+    // Temporary verbose error for debugging
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('Site creation error:', errMsg);
+    return errorResponse(`Site creation failed: ${errMsg}`, 500);
   }
 }
