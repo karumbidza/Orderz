@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { item_id, warehouse_id, quantity, reason } = body;
+    const { item_id, warehouse_id, quantity, reason, reference_id, grn_number } = body;
 
     if (!item_id || !warehouse_id || !quantity || quantity <= 0) {
       return NextResponse.json({ 
@@ -118,16 +118,29 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Create stock movement record (trigger auto-updates stock_levels)
+    const referenceType = grn_number ? 'GRN_RECEIPT' : reference_id ? 'PURCHASE_ORDER' : 'MANUAL_ADD';
+
+    // Create stock movement record
     const movement = await sql`
       INSERT INTO stock_movements 
-        (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
+        (item_id, warehouse_id, movement_type, quantity, reference_type, reference_id, reason, created_at)
       VALUES 
-        (${item_id}, ${warehouse_id}, 'IN', ${quantity}, 'MANUAL_ADD', ${reason || 'Stock added via admin'}, NOW())
+        (${item_id}, ${warehouse_id}, 'IN', ${quantity}, 
+         ${referenceType}, ${reference_id || grn_number || null}, ${reason || 'Stock added via admin'}, NOW())
       RETURNING id, item_id, quantity
     `;
 
-    // Get updated stock level (updated by trigger)
+    // Update or insert stock level
+    await sql`
+      INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
+      VALUES (${item_id}, ${warehouse_id}, ${quantity}, NOW())
+      ON CONFLICT (item_id, warehouse_id) 
+      DO UPDATE SET 
+        quantity_on_hand = stock_levels.quantity_on_hand + ${quantity},
+        last_updated = NOW()
+    `;
+
+    // Get updated stock level
     const stockLevel = await sql`
       SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
       FROM stock_levels sl
@@ -153,17 +166,28 @@ export async function POST(request: NextRequest) {
 }
 
 // ─────────────────────────────────────────────
-// PATCH /api/admin/stock - Dispatch stock (OUT movement)
+// PATCH /api/admin/stock - Dispatch/Deduct stock (OUT, DAMAGE, RETURN movements)
+// Supports: movement_type = 'OUT' | 'DAMAGE' | 'RETURN' | 'ADJUSTMENT'
 // ─────────────────────────────────────────────
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { item_id, warehouse_id, quantity, reason } = body;
+    const { item_id, warehouse_id, quantity, reason, movement_type = 'OUT', reference_id, order_id } = body;
 
     if (!item_id || !warehouse_id || !quantity || quantity <= 0) {
       return NextResponse.json({ 
         success: false, 
         error: 'item_id, warehouse_id, and positive quantity are required' 
+      }, { status: 400 });
+    }
+
+    // Validate movement type
+    const validTypes = ['OUT', 'DAMAGE', 'RETURN', 'ADJUSTMENT'];
+    const movementType = (movement_type || 'OUT').toUpperCase();
+    if (!validTypes.includes(movementType)) {
+      return NextResponse.json({
+        success: false,
+        error: `Invalid movement_type. Must be one of: ${validTypes.join(', ')}`
       }, { status: 400 });
     }
 
@@ -180,23 +204,51 @@ export async function PATCH(request: NextRequest) {
       }, { status: 404 });
     }
 
-    if (currentStock[0].quantity_on_hand < quantity) {
+    // For OUT and DAMAGE, check if sufficient stock
+    if (['OUT', 'DAMAGE'].includes(movementType) && currentStock[0].quantity_on_hand < quantity) {
       return NextResponse.json({ 
         success: false, 
         error: `Insufficient stock. Available: ${currentStock[0].quantity_on_hand}, Requested: ${quantity}` 
       }, { status: 400 });
     }
 
-    // Create stock movement record (trigger auto-updates stock_levels)
+    // Determine quantity adjustment and reference type
+    let adjustedQuantity = quantity;
+    let referenceType = 'MANUAL';
+
+    if (movementType === 'OUT') {
+      adjustedQuantity = -Math.abs(quantity);
+      referenceType = order_id ? 'ORDER_FULFILLMENT' : 'MANUAL_DISPATCH';
+    } else if (movementType === 'DAMAGE') {
+      adjustedQuantity = -Math.abs(quantity);
+      referenceType = 'DAMAGE_WRITE_OFF';
+    } else if (movementType === 'RETURN') {
+      adjustedQuantity = Math.abs(quantity); // RETURN adds stock back
+      referenceType = 'CUSTOMER_RETURN';
+    } else if (movementType === 'ADJUSTMENT') {
+      // ADJUSTMENT can be + or - based on sign of quantity
+      referenceType = 'STOCK_ADJUSTMENT';
+    }
+
+    // Create stock movement record
     const movement = await sql`
       INSERT INTO stock_movements 
-        (item_id, warehouse_id, movement_type, quantity, reference_type, reason, created_at)
+        (item_id, warehouse_id, movement_type, quantity, reference_type, reference_id, reason, created_at)
       VALUES 
-        (${item_id}, ${warehouse_id}, 'OUT', ${-quantity}, 'MANUAL_DISPATCH', ${reason || 'Stock dispatched via admin'}, NOW())
+        (${item_id}, ${warehouse_id}, ${movementType}, ${adjustedQuantity}, 
+         ${referenceType}, ${reference_id || order_id || null}, ${reason || `${movementType} via admin`}, NOW())
       RETURNING id, item_id, quantity
     `;
 
-    // Get updated stock level (updated by trigger)
+    // Update stock level
+    await sql`
+      UPDATE stock_levels 
+      SET quantity_on_hand = quantity_on_hand + ${adjustedQuantity}, 
+          last_updated = NOW()
+      WHERE item_id = ${item_id} AND warehouse_id = ${warehouse_id}
+    `;
+
+    // Get updated stock level
     const stockLevel = await sql`
       SELECT sl.quantity_on_hand, i.sku, i.product, w.name as warehouse_name
       FROM stock_levels sl
@@ -205,18 +257,23 @@ export async function PATCH(request: NextRequest) {
       WHERE sl.item_id = ${item_id} AND sl.warehouse_id = ${warehouse_id}
     `;
 
+    const actionWord = movementType === 'RETURN' ? 'Returned' : 
+                       movementType === 'DAMAGE' ? 'Damaged' :
+                       movementType === 'ADJUSTMENT' ? 'Adjusted' : 'Dispatched';
+
     return NextResponse.json({ 
       success: true, 
-      message: `Dispatched ${quantity} units. New stock: ${stockLevel[0].quantity_on_hand}`,
+      message: `${actionWord} ${Math.abs(quantity)} units. New stock: ${stockLevel[0].quantity_on_hand}`,
       movement_id: movement[0].id,
+      movement_type: movementType,
       new_quantity: stockLevel[0].quantity_on_hand
     });
 
   } catch (error) {
-    console.error('Error dispatching stock:', error);
+    console.error('Error processing stock movement:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Failed to dispatch stock: ' + String(error)
+      error: 'Failed to process stock movement: ' + String(error)
     }, { status: 500 });
   }
 }
