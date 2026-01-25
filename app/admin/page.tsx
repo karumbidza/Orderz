@@ -893,8 +893,21 @@ export default function AdminPage() {
             left: 0;
             top: 0;
             width: 100%;
-            padding: 20px;
+            padding: 15px;
             background: white !important;
+            font-size: 12px;
+          }
+          .print-content table {
+            width: 100% !important;
+            border-collapse: collapse;
+            page-break-inside: auto;
+          }
+          .print-content tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+          }
+          .print-content th, .print-content td {
+            padding: 6px 8px !important;
           }
           .no-print {
             display: none !important;
@@ -911,6 +924,10 @@ export default function AdminPage() {
           .MuiPaper-root {
             box-shadow: none !important;
             border: none !important;
+          }
+          @page {
+            margin: 10mm;
+            size: A4 portrait;
           }
         }
       `}</style>
@@ -1236,17 +1253,16 @@ export default function AdminPage() {
 
                 {/* Items Table */}
                 <Paper variant="outlined">
-                  <Box component="table" sx={{ width: '100%', fontSize: 14 }}>
-                    <Box component="thead" sx={{ bgcolor: 'grey.50' }}>
+                  <Box component="table" sx={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                    <Box component="thead" sx={{ bgcolor: 'grey.100' }}>
                       <Box component="tr">
-                        <Box component="th" sx={{ p: 2, textAlign: 'left' }}>Item</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'left' }}>SKU</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Size</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Requested</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Dispatched</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Pending</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'right' }}>Unit Cost</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'right' }}>Total</Box>
+                        <Box component="th" sx={{ p: 1.5, textAlign: 'left', borderBottom: '2px solid #006633' }}>Item</Box>
+                        <Box component="th" sx={{ p: 1.5, textAlign: 'left', borderBottom: '2px solid #006633' }}>SKU</Box>
+                        <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 60 }}>Qty</Box>
+                        <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 70 }}>Sent</Box>
+                        <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 70 }}>Pending</Box>
+                        <Box component="th" sx={{ p: 1.5, textAlign: 'right', borderBottom: '2px solid #006633', width: 80 }}>Unit $</Box>
+                        <Box component="th" sx={{ p: 1.5, textAlign: 'right', borderBottom: '2px solid #006633', width: 80 }}>Total $</Box>
                       </Box>
                     </Box>
                     <Box component="tbody">
@@ -1255,45 +1271,38 @@ export default function AdminPage() {
                         const remaining = item.quantity - dispatched;
                         return (
                           <Box component="tr" key={idx} sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: remaining > 0 ? 'warning.50' : 'transparent' }}>
-                            <Box component="td" sx={{ p: 2 }}>
-                              <Typography variant="body2" fontWeight={500}>{item.product}</Typography>
-                              {item.employee_name && <Typography variant="caption" color="text.secondary">For: {item.employee_name}</Typography>}
+                            <Box component="td" sx={{ p: 1.5 }}>
+                              <Typography variant="body2" fontWeight={500} sx={{ fontSize: 13 }}>{item.product}</Typography>
+                              {item.employee_name && <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>For: {item.employee_name}</Typography>}
                             </Box>
-                            <Box component="td" sx={{ p: 2, fontFamily: 'monospace', fontSize: 12 }}>{item.sku}</Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'center' }}>{item.size || '-'}</Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'center', fontWeight: 500 }}>{item.quantity}</Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
+                            <Box component="td" sx={{ p: 1.5, fontFamily: 'monospace', fontSize: 11 }}>{item.sku}</Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'center', fontWeight: 500 }}>{item.quantity}</Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
                               {dispatched > 0 ? (
-                                <Chip 
-                                  size="small" 
-                                  label={dispatched >= item.quantity ? `✓ ${dispatched}` : `${dispatched}`}
-                                  color={dispatched >= item.quantity ? 'success' : 'primary'}
-                                />
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: dispatched >= item.quantity ? 'success.main' : 'primary.main', fontSize: 13 }}>
+                                  {dispatched >= item.quantity ? `✓${dispatched}` : dispatched}
+                                </Typography>
                               ) : (
-                                <Typography variant="body2" color="text.secondary">0</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>0</Typography>
                               )}
                             </Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
                               {remaining > 0 ? (
-                                <Chip 
-                                  size="small" 
-                                  label={remaining}
-                                  color="warning"
-                                />
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.dark', fontSize: 13 }}>{remaining}</Typography>
                               ) : (
-                                <Typography variant="body2" color="success.main">✓</Typography>
+                                <Typography variant="body2" color="success.main" sx={{ fontSize: 13 }}>✓</Typography>
                               )}
                             </Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'right' }}>${parseFloat(item.unit_cost).toFixed(2)}</Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'right', fontWeight: 600 }}>${parseFloat(item.total_cost).toFixed(2)}</Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontSize: 13 }}>${parseFloat(item.unit_cost).toFixed(2)}</Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontWeight: 600, fontSize: 13 }}>${parseFloat(item.total_cost).toFixed(2)}</Box>
                           </Box>
                         );
                       })}
                     </Box>
-                    <Box component="tfoot" sx={{ bgcolor: 'grey.50' }}>
+                    <Box component="tfoot" sx={{ bgcolor: 'grey.100' }}>
                       <Box component="tr">
-                        <Box component="td" colSpan={7} sx={{ p: 2, textAlign: 'right', fontWeight: 600 }}>Total Amount:</Box>
-                        <Box component="td" sx={{ p: 2, textAlign: 'right', fontWeight: 700, fontSize: 18 }}>${parseFloat(orderModal.order.total_amount).toFixed(2)}</Box>
+                        <Box component="td" colSpan={6} sx={{ p: 1.5, textAlign: 'right', fontWeight: 600, borderTop: '2px solid #006633' }}>Total Amount:</Box>
+                        <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontWeight: 700, fontSize: 16, borderTop: '2px solid #006633' }}>${parseFloat(orderModal.order.total_amount).toFixed(2)}</Box>
                       </Box>
                     </Box>
                   </Box>
