@@ -179,10 +179,17 @@ export async function POST(
 
     // If nothing to dispatch
     if (!anyDispatchable) {
+      // Provide a more helpful error message
+      const pendingItems = dispatchResults.filter(i => i.remaining_after > 0);
+      const itemsNeedingStock = pendingItems.map(i => `${i.sku}: needs ${i.remaining_after}, stock: ${i.stock_available}`);
+      
       return NextResponse.json({ 
         success: false, 
-        error: 'No items to dispatch. Either no stock or all quantities set to 0.',
-        items: dispatchResults
+        error: pendingItems.length > 0 
+          ? `No stock available to dispatch. Items pending: ${itemsNeedingStock.join('; ')}. Please add stock first.`
+          : 'No items to dispatch. Either all items fulfilled or quantities set to 0.',
+        items: dispatchResults,
+        requires_stock: true
       }, { status: 400 });
     }
 

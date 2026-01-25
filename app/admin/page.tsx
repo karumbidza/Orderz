@@ -1244,6 +1244,7 @@ export default function AdminPage() {
                         <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Size</Box>
                         <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Requested</Box>
                         <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Dispatched</Box>
+                        <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Pending</Box>
                         <Box component="th" sx={{ p: 2, textAlign: 'right' }}>Unit Cost</Box>
                         <Box component="th" sx={{ p: 2, textAlign: 'right' }}>Total</Box>
                       </Box>
@@ -1253,23 +1254,34 @@ export default function AdminPage() {
                         const dispatched = item.qty_dispatched || 0;
                         const remaining = item.quantity - dispatched;
                         return (
-                          <Box component="tr" key={idx} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                          <Box component="tr" key={idx} sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: remaining > 0 ? 'warning.50' : 'transparent' }}>
                             <Box component="td" sx={{ p: 2 }}>
                               <Typography variant="body2" fontWeight={500}>{item.product}</Typography>
                               {item.employee_name && <Typography variant="caption" color="text.secondary">For: {item.employee_name}</Typography>}
                             </Box>
                             <Box component="td" sx={{ p: 2, fontFamily: 'monospace', fontSize: 12 }}>{item.sku}</Box>
                             <Box component="td" sx={{ p: 2, textAlign: 'center' }}>{item.size || '-'}</Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'center' }}>{item.quantity}</Box>
+                            <Box component="td" sx={{ p: 2, textAlign: 'center', fontWeight: 500 }}>{item.quantity}</Box>
                             <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
                               {dispatched > 0 ? (
                                 <Chip 
                                   size="small" 
-                                  label={dispatched >= item.quantity ? `✓ ${dispatched}` : `${dispatched}/${item.quantity}`}
-                                  color={dispatched >= item.quantity ? 'success' : 'warning'}
+                                  label={dispatched >= item.quantity ? `✓ ${dispatched}` : `${dispatched}`}
+                                  color={dispatched >= item.quantity ? 'success' : 'primary'}
                                 />
                               ) : (
-                                <Typography variant="body2" color="text.secondary">-</Typography>
+                                <Typography variant="body2" color="text.secondary">0</Typography>
+                              )}
+                            </Box>
+                            <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
+                              {remaining > 0 ? (
+                                <Chip 
+                                  size="small" 
+                                  label={remaining}
+                                  color="warning"
+                                />
+                              ) : (
+                                <Typography variant="body2" color="success.main">✓</Typography>
                               )}
                             </Box>
                             <Box component="td" sx={{ p: 2, textAlign: 'right' }}>${parseFloat(item.unit_cost).toFixed(2)}</Box>
@@ -1280,7 +1292,7 @@ export default function AdminPage() {
                     </Box>
                     <Box component="tfoot" sx={{ bgcolor: 'grey.50' }}>
                       <Box component="tr">
-                        <Box component="td" colSpan={6} sx={{ p: 2, textAlign: 'right', fontWeight: 600 }}>Total Amount:</Box>
+                        <Box component="td" colSpan={7} sx={{ p: 2, textAlign: 'right', fontWeight: 600 }}>Total Amount:</Box>
                         <Box component="td" sx={{ p: 2, textAlign: 'right', fontWeight: 700, fontSize: 18 }}>${parseFloat(orderModal.order.total_amount).toFixed(2)}</Box>
                       </Box>
                     </Box>
