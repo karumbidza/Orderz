@@ -280,6 +280,15 @@ export default function AdminPage() {
     item: StockItem | null;
     quantity: string;
   }>({ open: false, action: 'add', item: null, quantity: '' });
+  const [stockViewModal, setStockViewModal] = useState<{
+    open: boolean;
+    item: StockItem | null;
+    history: StockMovement[];
+    loading: boolean;
+    action: 'none' | 'add' | 'remove';
+    quantity: string;
+    reason: string;
+  }>({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '' });
   const [bulkReceiveModal, setBulkReceiveModal] = useState<{
     open: boolean;
     items: { item_id: number; sku: string; product: string; quantity: string }[];
@@ -528,6 +537,80 @@ export default function AdminPage() {
     if (stockModal.action === 'add') addStock(stockModal.item.item_id, qty);
     else dispatchStock(stockModal.item.item_id, qty);
     setStockModal({ ...stockModal, open: false });
+  };
+
+  // Stock View Modal Functions
+  const openStockViewModal = async (item: StockItem) => {
+    setStockViewModal({ open: true, item, history: [], loading: true, action: 'none', quantity: '', reason: '' });
+    try {
+      const res = await fetch(`/api/admin/stock/history?item_id=${item.item_id}&limit=50`);
+      const data = await res.json();
+      if (data.success) {
+        setStockViewModal(prev => ({ ...prev, history: data.data, loading: false }));
+      } else {
+        showMessage('Error: ' + data.error, 'error');
+        setStockViewModal(prev => ({ ...prev, loading: false }));
+      }
+    } catch {
+      showMessage('Failed to load item history', 'error');
+      setStockViewModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleStockViewAction = async () => {
+    const qty = parseInt(stockViewModal.quantity);
+    if (!stockViewModal.item || isNaN(qty) || qty <= 0) {
+      showMessage('Enter a valid quantity', 'error');
+      return;
+    }
+    if (stockViewModal.action === 'remove' && !stockViewModal.reason) {
+      showMessage('Please select a reason', 'error');
+      return;
+    }
+
+    try {
+      if (stockViewModal.action === 'add') {
+        const res = await fetch('/api/admin/stock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            item_id: stockViewModal.item.item_id, 
+            warehouse_id: 2, 
+            quantity: qty, 
+            reason: stockViewModal.reason || 'Stock addition via admin' 
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showMessage('Stock added successfully', 'success');
+          loadStock();
+          openStockViewModal(stockViewModal.item); // Refresh history
+        } else showMessage('Error: ' + data.error, 'error');
+      } else if (stockViewModal.action === 'remove') {
+        // Use stock-movements API for removals with reason codes
+        const res = await fetch('/api/admin/stock-movements', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            item_id: stockViewModal.item.item_id, 
+            warehouse_id: 2, 
+            quantity: -qty,
+            movement_type: stockViewModal.reason === 'RETURN_TO_SUPPLIER' ? 'RETURN' : 
+                           stockViewModal.reason === 'DAMAGED' ? 'DAMAGE' : 'ADJUSTMENT',
+            reason: stockViewModal.reason
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showMessage('Stock removed successfully', 'success');
+          loadStock();
+          openStockViewModal(stockViewModal.item); // Refresh history
+        } else showMessage('Error: ' + data.error, 'error');
+      }
+    } catch {
+      showMessage('Failed to update stock', 'error');
+    }
+    setStockViewModal(prev => ({ ...prev, action: 'none', quantity: '', reason: '' }));
   };
 
   const openBulkReceiveModal = () => {
@@ -828,19 +911,10 @@ export default function AdminPage() {
     { field: 'value', headerName: 'Value', width: 120, align: 'right', headerAlign: 'right', valueGetter: (value, row) => row.quantity_on_hand * parseFloat(row.cost), renderCell: (params) => (
       <Typography variant="body2" fontWeight={600}>${params.value.toFixed(2)}</Typography>
     )},
-    { field: 'actions', headerName: 'Actions', width: 140, sortable: false, renderCell: (params) => (
-      <Stack direction="row" spacing={1}>
-        <Tooltip title="Add Stock">
-          <IconButton size="small" color="success" onClick={() => openStockModal(params.row, 'add')}>
-            <AddIcon />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Dispatch Stock">
-          <IconButton size="small" color="warning" onClick={() => openStockModal(params.row, 'dispatch')} disabled={params.row.quantity_on_hand === 0}>
-            <RemoveIcon />
-          </IconButton>
-        </Tooltip>
-      </Stack>
+    { field: 'actions', headerName: '', width: 100, sortable: false, align: 'center', headerAlign: 'center', renderCell: (params) => (
+      <Button size="small" variant="outlined" onClick={() => openStockViewModal(params.row)}>
+        View
+      </Button>
     )},
   ];
 
@@ -1235,7 +1309,7 @@ export default function AdminPage() {
           </Paper>
         </Container>
 
-        {/* Stock Modal */}
+        {/* Stock Modal (legacy - keep for compatibility) */}
         <Dialog open={stockModal.open} onClose={() => setStockModal({ ...stockModal, open: false })} maxWidth="xs" fullWidth>
           <DialogTitle>{stockModal.action === 'add' ? 'Add Stock' : 'Dispatch Stock'}</DialogTitle>
           <DialogContent>
@@ -1260,6 +1334,189 @@ export default function AdminPage() {
               {stockModal.action === 'add' ? 'Add Stock' : 'Dispatch'}
             </Button>
           </DialogActions>
+        </Dialog>
+
+        {/* Stock View Modal - Item History with Add/Remove Actions */}
+        <Dialog 
+          open={stockViewModal.open} 
+          onClose={() => setStockViewModal({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '' })} 
+          maxWidth="md" 
+          fullWidth
+        >
+          <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box>
+              <Typography variant="h6">Stock Item Details</Typography>
+              {stockViewModal.item && (
+                <Typography variant="body2" color="text.secondary">
+                  {stockViewModal.item.product} ({stockViewModal.item.sku})
+                </Typography>
+              )}
+            </Box>
+            <IconButton onClick={() => setStockViewModal({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '' })}>
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent dividers>
+            {/* Stock Summary */}
+            {stockViewModal.item && (
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">Current Stock</Typography>
+                  <Typography variant="h5" fontWeight={700} color={stockViewModal.item.quantity_on_hand === 0 ? 'error.main' : stockViewModal.item.quantity_on_hand < 10 ? 'warning.main' : 'success.main'}>
+                    {stockViewModal.item.quantity_on_hand}
+                  </Typography>
+                </Box>
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">Unit Cost</Typography>
+                  <Typography variant="h5" fontWeight={700}>${parseFloat(stockViewModal.item.cost).toFixed(2)}</Typography>
+                </Box>
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">Stock Value</Typography>
+                  <Typography variant="h5" fontWeight={700}>${(stockViewModal.item.quantity_on_hand * parseFloat(stockViewModal.item.cost)).toFixed(2)}</Typography>
+                </Box>
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">Category</Typography>
+                  <Typography variant="body1" fontWeight={600}>{stockViewModal.item.category}</Typography>
+                </Box>
+              </Box>
+            )}
+
+            {/* Transaction History */}
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Transaction History (Last 30 Days)</Typography>
+            <Paper variant="outlined" sx={{ maxHeight: 280, overflow: 'auto', mb: 3 }}>
+              {stockViewModal.loading ? (
+                <Box sx={{ p: 4, textAlign: 'center' }}>
+                  <CircularProgress size={24} />
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Loading history...</Typography>
+                </Box>
+              ) : stockViewModal.history.length === 0 ? (
+                <Box sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">No transactions found</Typography>
+                </Box>
+              ) : (
+                <Box component="table" sx={{ width: '100%', fontSize: 13 }}>
+                  <Box component="thead" sx={{ bgcolor: 'grey.100', position: 'sticky', top: 0 }}>
+                    <Box component="tr">
+                      <Box component="th" sx={{ p: 1.5, textAlign: 'left' }}>Date</Box>
+                      <Box component="th" sx={{ p: 1.5, textAlign: 'center' }}>Type</Box>
+                      <Box component="th" sx={{ p: 1.5, textAlign: 'right' }}>Qty</Box>
+                      <Box component="th" sx={{ p: 1.5, textAlign: 'right' }}>Value</Box>
+                      <Box component="th" sx={{ p: 1.5, textAlign: 'left' }}>Destination/Reference</Box>
+                    </Box>
+                  </Box>
+                  <Box component="tbody">
+                    {stockViewModal.history.map((movement) => (
+                      <Box component="tr" key={movement.id} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Box component="td" sx={{ p: 1.5 }}>
+                          <Typography variant="body2">{new Date(movement.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</Typography>
+                          <Typography variant="caption" color="text.secondary">{new Date(movement.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</Typography>
+                        </Box>
+                        <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
+                          <Chip 
+                            size="small" 
+                            label={movement.movement_type} 
+                            color={movement.movement_type === 'IN' ? 'success' : 'warning'}
+                            sx={{ fontSize: 11 }}
+                          />
+                        </Box>
+                        <Box component="td" sx={{ p: 1.5, textAlign: 'right' }}>
+                          <Typography variant="body2" fontWeight={600} color={movement.movement_type === 'IN' ? 'success.main' : 'warning.main'}>
+                            {movement.movement_type === 'IN' ? '+' : '−'}{Math.abs(movement.quantity)}
+                          </Typography>
+                        </Box>
+                        <Box component="td" sx={{ p: 1.5, textAlign: 'right' }}>
+                          <Typography variant="body2">${(Math.abs(movement.quantity) * parseFloat(movement.cost || '0')).toFixed(2)}</Typography>
+                        </Box>
+                        <Box component="td" sx={{ p: 1.5 }}>
+                          <Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>
+                            {movement.site_name || movement.reason || '—'}
+                          </Typography>
+                          {movement.order_number && (
+                            <Typography variant="caption" color="primary.main">Order #{movement.order_number}</Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Paper>
+
+            {/* Action Forms */}
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Stock Actions</Typography>
+            <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+              <Button 
+                variant={stockViewModal.action === 'add' ? 'contained' : 'outlined'} 
+                color="success" 
+                startIcon={<AddIcon />}
+                onClick={() => setStockViewModal(prev => ({ ...prev, action: prev.action === 'add' ? 'none' : 'add', quantity: '', reason: '' }))}
+              >
+                Add Stock
+              </Button>
+              <Button 
+                variant={stockViewModal.action === 'remove' ? 'contained' : 'outlined'} 
+                color="error" 
+                startIcon={<RemoveIcon />}
+                onClick={() => setStockViewModal(prev => ({ ...prev, action: prev.action === 'remove' ? 'none' : 'remove', quantity: '', reason: '' }))}
+                disabled={stockViewModal.item?.quantity_on_hand === 0}
+              >
+                Remove Stock
+              </Button>
+            </Stack>
+
+            {stockViewModal.action !== 'none' && (
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: stockViewModal.action === 'add' ? 'success.50' : 'error.50' }}>
+                <Stack direction="row" spacing={2} alignItems="flex-start">
+                  <TextField
+                    size="small"
+                    type="number"
+                    label="Quantity"
+                    value={stockViewModal.quantity}
+                    onChange={(e) => setStockViewModal(prev => ({ ...prev, quantity: e.target.value }))}
+                    inputProps={{ min: 1 }}
+                    sx={{ width: 120 }}
+                  />
+                  {stockViewModal.action === 'remove' && (
+                    <TextField
+                      select
+                      size="small"
+                      label="Reason"
+                      value={stockViewModal.reason}
+                      onChange={(e) => setStockViewModal(prev => ({ ...prev, reason: e.target.value }))}
+                      SelectProps={{ native: true }}
+                      sx={{ minWidth: 200 }}
+                    >
+                      <option value="">Select reason...</option>
+                      <option value="DAMAGED">Damaged</option>
+                      <option value="RETURN_TO_SUPPLIER">Return to Supplier</option>
+                      <option value="EXPIRED">Expired</option>
+                      <option value="LOST">Lost/Missing</option>
+                      <option value="STOCK_TAKE_ADJUSTMENT">Stock Take Adjustment</option>
+                      <option value="OTHER">Other</option>
+                    </TextField>
+                  )}
+                  {stockViewModal.action === 'add' && (
+                    <TextField
+                      size="small"
+                      label="Reference (optional)"
+                      placeholder="GRN #, Invoice #, etc."
+                      value={stockViewModal.reason}
+                      onChange={(e) => setStockViewModal(prev => ({ ...prev, reason: e.target.value }))}
+                      sx={{ flex: 1 }}
+                    />
+                  )}
+                  <Button 
+                    variant="contained" 
+                    color={stockViewModal.action === 'add' ? 'success' : 'error'}
+                    onClick={handleStockViewAction}
+                    disabled={!stockViewModal.quantity || (stockViewModal.action === 'remove' && !stockViewModal.reason)}
+                  >
+                    {stockViewModal.action === 'add' ? 'Add' : 'Remove'}
+                  </Button>
+                </Stack>
+              </Paper>
+            )}
+          </DialogContent>
         </Dialog>
 
         {/* Bulk Receive Modal */}
