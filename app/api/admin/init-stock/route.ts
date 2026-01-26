@@ -109,3 +109,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Failed to check status: ' + String(error) }, { status: 500 });
   }
 }
+// DELETE - Clear all stock data
+export async function DELETE() {
+  try {
+    // Delete stock movements first
+    const movements = await sql`DELETE FROM stock_movements RETURNING id`;
+    
+    // Delete stock levels
+    const levels = await sql`DELETE FROM stock_levels RETURNING item_id`;
+    
+    return NextResponse.json({ 
+      success: true, 
+      message: 'All stock data cleared',
+      deleted: {
+        stock_movements: movements.length,
+        stock_levels: levels.length
+      }
+    });
+  } catch (error) {
+    console.error('Error clearing stock data:', error);
+    return NextResponse.json({ success: false, error: 'Failed to clear stock: ' + String(error) }, { status: 500 });
+  }
+}
