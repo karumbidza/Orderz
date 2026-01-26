@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Invalid order ID' }, { status: 400 });
     }
 
-    // Get order items with stock levels
+    // Get order items with stock levels (from warehouse 2)
     const items = await sql`
       SELECT 
         oi.id,
@@ -39,7 +39,7 @@ export async function GET(
           ELSE 'UNAVAILABLE'
         END as dispatch_status
       FROM order_items oi
-      LEFT JOIN stock_levels sl ON oi.item_id = sl.item_id
+      LEFT JOIN stock_levels sl ON oi.item_id = sl.item_id AND sl.warehouse_id = 2
       WHERE oi.order_id = ${orderId}
       ORDER BY oi.item_name
     `;
@@ -115,7 +115,7 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Get items with stock
+    // Get items with stock (from warehouse 2)
     const items = await sql`
       SELECT 
         oi.id,
@@ -126,7 +126,7 @@ export async function POST(
         COALESCE(oi.qty_dispatched, 0) as qty_dispatched,
         COALESCE(sl.quantity_on_hand, 0) as stock_available
       FROM order_items oi
-      LEFT JOIN stock_levels sl ON oi.item_id = sl.item_id
+      LEFT JOIN stock_levels sl ON oi.item_id = sl.item_id AND sl.warehouse_id = 2
       WHERE oi.order_id = ${orderId}
     `;
 
