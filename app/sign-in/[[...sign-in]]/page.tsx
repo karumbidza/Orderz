@@ -2,25 +2,29 @@ import { SignIn } from '@clerk/nextjs';
 
 export default function SignInPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <span className="text-white font-bold text-2xl">R</span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900">Welcome back</h1>
-          <p className="text-slate-600 mt-1">Sign in to Redan Coupon Admin</p>
+          <h1 className="text-3xl font-bold text-white">Welcome back</h1>
+          <p className="text-slate-400 mt-2">Sign in to Redan Coupon</p>
         </div>
         <SignIn 
           appearance={{
             elements: {
               rootBox: "mx-auto",
-              card: "shadow-xl border border-slate-200",
+              card: "shadow-2xl border border-slate-700 bg-slate-800",
               headerTitle: "hidden",
               headerSubtitle: "hidden",
-              socialButtonsBlockButton: "border border-slate-300 hover:bg-slate-50",
+              socialButtonsBlockButton: "bg-white hover:bg-slate-100 text-slate-900 border-0",
+              socialButtonsBlockButtonText: "font-medium",
+              dividerLine: "bg-slate-600",
+              dividerText: "text-slate-400",
+              formFieldLabel: "text-slate-300",
+              formFieldInput: "bg-slate-700 border-slate-600 text-white",
               formButtonPrimary: "bg-blue-600 hover:bg-blue-700",
-              footerActionLink: "text-blue-600 hover:text-blue-700",
+              footerActionLink: "text-blue-400 hover:text-blue-300",
+              footerActionText: "text-slate-400",
+              identityPreviewEditButton: "text-blue-400",
             }
           }}
         />

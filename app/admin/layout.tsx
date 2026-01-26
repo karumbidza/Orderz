@@ -10,18 +10,13 @@ export default function AdminLayout({
   return (
     <div className="min-h-screen">
       {/* Admin Header with User Profile */}
-      <header className="bg-white border-b border-slate-200 shadow-sm">
+      <header className="bg-slate-900 border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo / Title */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">R</span>
-              </div>
-              <div>
-                <h1 className="text-lg font-semibold text-slate-900">Redan Coupon</h1>
-                <p className="text-xs text-slate-500">Admin Portal</p>
-              </div>
+            <div>
+              <h1 className="text-lg font-semibold text-white">Redan Coupon</h1>
+              <p className="text-xs text-slate-400">Admin Portal</p>
             </div>
             
             {/* User Profile */}
