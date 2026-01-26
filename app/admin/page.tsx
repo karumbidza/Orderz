@@ -47,6 +47,8 @@ import {
   Store as SiteIcon,
   Assessment as TotalsIcon,
   Edit as EditIcon,
+  Download as DownloadIcon,
+  Analytics as ReportsIcon,
 } from '@mui/icons-material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -227,7 +229,8 @@ interface SiteTotal {
   last_dispatch_date: string | null;
 }
 
-type TabValue = 'orders' | 'inventory' | 'history' | 'sites' | 'totals';
+type TabValue = 'orders' | 'inventory' | 'sites' | 'reports';
+type ReportView = 'movements' | 'site-analysis';
 
 const STATUS_COLORS: Record<string, 'warning' | 'info' | 'secondary' | 'success' | 'error' | 'default'> = {
   PENDING: 'warning',
@@ -244,6 +247,7 @@ const STATUS_COLORS: Record<string, 'warning' | 'info' | 'secondary' | 'success'
 // ─────────────────────────────────────────
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabValue>('orders');
+  const [reportView, setReportView] = useState<ReportView>('movements');
   const [orders, setOrders] = useState<Order[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
   const [stockHistory, setStockHistory] = useState<StockMovement[]>([]);
@@ -364,9 +368,11 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === 'orders') loadOrders();
     else if (activeTab === 'inventory') loadStock();
-    else if (activeTab === 'history') loadStockHistory();
     else if (activeTab === 'sites') loadSites();
-    else if (activeTab === 'totals') loadSiteTotals();
+    else if (activeTab === 'reports') {
+      loadStockHistory();
+      loadSiteTotals();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -638,6 +644,69 @@ export default function AdminPage() {
     } catch {
       showMessage('Failed to save site', 'error');
     }
+  };
+
+  // ─────────────────────────────────────────
+  // DOWNLOAD REPORTS
+  // ─────────────────────────────────────────
+  const downloadStockMovementsCSV = () => {
+    if (stockHistory.length === 0) {
+      showMessage('No stock movements to download', 'info');
+      return;
+    }
+    
+    const headers = ['Date', 'Time', 'SKU', 'Product', 'Category', 'Type', 'Quantity', 'Value ($)', 'Destination', 'Order #', 'Reference'];
+    const rows = stockHistory.map(m => [
+      new Date(m.created_at).toLocaleDateString('en-GB'),
+      new Date(m.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      m.sku,
+      m.product,
+      m.category || '',
+      m.movement_type,
+      Math.abs(m.quantity),
+      (Math.abs(m.quantity) * parseFloat(m.cost || '0')).toFixed(2),
+      m.site_name || '',
+      m.order_number || '',
+      m.reason || ''
+    ]);
+    
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stock-movements-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showMessage('Stock movements report downloaded', 'success');
+  };
+
+  const downloadSiteAnalysisCSV = () => {
+    if (siteTotals.length === 0) {
+      showMessage('No site data to download', 'info');
+      return;
+    }
+    
+    const headers = ['Site Code', 'Site Name', 'City', 'Total Orders', 'Items Dispatched', 'Total Value ($)', 'Last Dispatch'];
+    const rows = siteTotals.map(s => [
+      s.site_code,
+      s.site_name,
+      s.city,
+      s.total_orders,
+      s.total_items_dispatched,
+      parseFloat(s.total_value_dispatched || '0').toFixed(2),
+      s.last_dispatch_date ? new Date(s.last_dispatch_date).toLocaleDateString('en-GB') : ''
+    ]);
+    
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `site-analysis-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showMessage('Site analysis report downloaded', 'success');
   };
 
   // ─────────────────────────────────────────
@@ -951,9 +1020,11 @@ export default function AdminPage() {
             <IconButton onClick={() => {
               if (activeTab === 'orders') loadOrders();
               else if (activeTab === 'inventory') loadStock();
-              else if (activeTab === 'history') loadStockHistory();
               else if (activeTab === 'sites') loadSites();
-              else if (activeTab === 'totals') loadSiteTotals();
+              else if (activeTab === 'reports') {
+                loadStockHistory();
+                loadSiteTotals();
+              }
             }}>
               <RefreshIcon />
             </IconButton>
@@ -967,14 +1038,13 @@ export default function AdminPage() {
               <Typography variant="h4">
                 {activeTab === 'orders' ? 'Orders' : 
                  activeTab === 'inventory' ? 'Inventory' : 
-                 activeTab === 'history' ? 'Stock History' :
-                 activeTab === 'sites' ? 'Sites' : 'Site Totals'}
+                 activeTab === 'sites' ? 'Sites' : 'Reports'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {activeTab === 'orders' ? 'Manage incoming orders and dispatches' : 
                  activeTab === 'inventory' ? 'Track stock levels and manage inventory' : 
-                 activeTab === 'history' ? 'View stock movement history' :
-                 activeTab === 'sites' ? 'Manage site information' : 'View dispatched totals by site'}
+                 activeTab === 'sites' ? 'Manage site information' : 
+                 reportView === 'movements' ? 'Stock movement history and tracking' : 'Site dispatch totals and analysis'}
               </Typography>
             </Box>
             <Stack direction="row" spacing={2}>
@@ -996,9 +1066,8 @@ export default function AdminPage() {
             <Tabs value={activeTab} onChange={(_, v) => { setActiveTab(v); setSearchQuery(''); setStatusFilter('all'); setCategoryFilter('all'); setTypeFilter('all'); }} sx={{ borderBottom: 1, borderColor: 'divider' }}>
               <Tab icon={<ReceiptIcon />} iconPosition="start" label="Orders" value="orders" />
               <Tab icon={<InventoryIcon />} iconPosition="start" label="Inventory" value="inventory" />
-              <Tab icon={<HistoryIcon />} iconPosition="start" label="Stock History" value="history" />
               <Tab icon={<SiteIcon />} iconPosition="start" label="Sites" value="sites" />
-              <Tab icon={<TotalsIcon />} iconPosition="start" label="Totals" value="totals" />
+              <Tab icon={<ReportsIcon />} iconPosition="start" label="Reports" value="reports" />
             </Tabs>
           </Paper>
 
@@ -1010,8 +1079,7 @@ export default function AdminPage() {
                 placeholder={
                   activeTab === 'orders' ? 'Search orders...' : 
                   activeTab === 'inventory' ? 'Search products...' : 
-                  activeTab === 'history' ? 'Search movements...' :
-                  activeTab === 'sites' ? 'Search sites...' : 'Search totals...'
+                  activeTab === 'sites' ? 'Search sites...' : 'Search reports...'
                 }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -1069,27 +1137,50 @@ export default function AdminPage() {
                   ))}
                 </TextField>
               )}
-              {activeTab === 'history' && (
-                <TextField
-                  select
-                  size="small"
-                  label="Type"
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                  SelectProps={{ native: true }}
-                  sx={{ minWidth: 120 }}
-                >
-                  <option value="all">All</option>
-                  <option value="IN">Stock In</option>
-                  <option value="OUT">Stock Out</option>
-                </TextField>
+              {activeTab === 'reports' && (
+                <>
+                  <TextField
+                    select
+                    size="small"
+                    label="Report"
+                    value={reportView}
+                    onChange={(e) => setReportView(e.target.value as ReportView)}
+                    SelectProps={{ native: true }}
+                    sx={{ minWidth: 160 }}
+                  >
+                    <option value="movements">Stock Movements</option>
+                    <option value="site-analysis">Site Analysis</option>
+                  </TextField>
+                  {reportView === 'movements' && (
+                    <TextField
+                      select
+                      size="small"
+                      label="Type"
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value)}
+                      SelectProps={{ native: true }}
+                      sx={{ minWidth: 120 }}
+                    >
+                      <option value="all">All</option>
+                      <option value="IN">Stock In</option>
+                      <option value="OUT">Stock Out</option>
+                    </TextField>
+                  )}
+                  <Button 
+                    variant="outlined" 
+                    startIcon={<DownloadIcon />} 
+                    onClick={reportView === 'movements' ? downloadStockMovementsCSV : downloadSiteAnalysisCSV}
+                  >
+                    Download CSV
+                  </Button>
+                </>
               )}
               <Box sx={{ flex: 1 }} />
               <Typography variant="body2" color="text.secondary">
                 {activeTab === 'orders' ? `${filteredOrders.length} orders` : 
                  activeTab === 'inventory' ? `${filteredStock.length} items` : 
-                 activeTab === 'history' ? `${filteredHistory.length} movements` :
                  activeTab === 'sites' ? `${filteredSites.length} sites` :
+                 reportView === 'movements' ? `${filteredHistory.length} movements` :
                  `${filteredTotals.length} sites`}
               </Typography>
             </Stack>
@@ -1106,15 +1197,15 @@ export default function AdminPage() {
                 rows={
                   activeTab === 'orders' ? filteredOrders : 
                   activeTab === 'inventory' ? filteredStock.map(s => ({ ...s, id: s.item_id })) : 
-                  activeTab === 'history' ? filteredHistory :
                   activeTab === 'sites' ? filteredSites :
+                  reportView === 'movements' ? filteredHistory :
                   filteredTotals.map(t => ({ ...t, id: t.site_id }))
                 }
                 columns={
                   activeTab === 'orders' ? ordersColumns : 
                   activeTab === 'inventory' ? inventoryColumns : 
-                  activeTab === 'history' ? historyColumns :
-                  activeTab === 'sites' ? sitesColumns : totalsColumns
+                  activeTab === 'sites' ? sitesColumns :
+                  reportView === 'movements' ? historyColumns : totalsColumns
                 }
                 pageSizeOptions={[10, 25, 50, 100]}
                 initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
