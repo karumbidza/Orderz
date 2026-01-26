@@ -318,11 +318,23 @@ export default function AdminPage() {
     isNew: boolean;
   }>({ open: false, site: null, isNew: false });
 
+  // Site Ledger Modal
+  const [siteLedgerModal, setSiteLedgerModal] = useState<{
+    open: boolean;
+    site: SiteTotal | null;
+    items: any[];
+    loading: boolean;
+  }>({ open: false, site: null, items: [], loading: false });
+
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  
+  // Date filter for reports (global)
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
 
   // Load data functions
   const loadOrders = async () => {
@@ -380,7 +392,10 @@ export default function AdminPage() {
   const loadSiteTotals = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/site-totals');
+      const params = new URLSearchParams();
+      if (dateFrom) params.append('dateFrom', dateFrom);
+      if (dateTo) params.append('dateTo', dateTo);
+      const res = await fetch(`/api/admin/site-totals?${params.toString()}`);
       const data = await res.json();
       if (data.success) setSiteTotals(data.data);
       else showMessage('Error: ' + data.error, 'error');
@@ -388,6 +403,52 @@ export default function AdminPage() {
       showMessage('Failed to load site totals', 'error');
     }
     setLoading(false);
+  };
+
+  // Load site ledger (dispatch details for a site)
+  const loadSiteLedger = async (site: SiteTotal) => {
+    setSiteLedgerModal({ open: true, site, items: [], loading: true });
+    try {
+      const params = new URLSearchParams();
+      if (dateFrom) params.append('dateFrom', dateFrom);
+      if (dateTo) params.append('dateTo', dateTo);
+      const res = await fetch(`/api/admin/site-ledger/${site.site_id}?${params.toString()}`);
+      const data = await res.json();
+      if (data.success) {
+        setSiteLedgerModal(prev => ({ ...prev, items: data.data.items, loading: false }));
+      } else {
+        showMessage('Error: ' + data.error, 'error');
+        setSiteLedgerModal(prev => ({ ...prev, loading: false }));
+      }
+    } catch {
+      showMessage('Failed to load site ledger', 'error');
+      setSiteLedgerModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  // Download site ledger as CSV
+  const downloadSiteLedgerCSV = () => {
+    if (!siteLedgerModal.site || siteLedgerModal.items.length === 0) return;
+    const headers = ['Voucher', 'Dispatch Date', 'SKU', 'Item', 'Size', 'Qty Requested', 'Qty Dispatched', 'Unit Cost', 'Dispatch Value'];
+    const rows = siteLedgerModal.items.map(item => [
+      item.voucher_number,
+      item.dispatched_at ? new Date(item.dispatched_at).toLocaleDateString() : '',
+      item.sku,
+      item.item_name,
+      item.size || '',
+      item.qty_requested,
+      item.qty_dispatched,
+      item.unit_cost,
+      parseFloat(item.dispatch_value).toFixed(2)
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `site-ledger-${siteLedgerModal.site.site_code}-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Load data on tab change
@@ -1110,7 +1171,14 @@ export default function AdminPage() {
       <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
     )},
     { field: 'site_name', headerName: 'Site Name', flex: 1, minWidth: 180, renderCell: (params) => (
-      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
+      <Typography 
+        variant="body2" 
+        fontWeight={500} 
+        sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline', color: 'primary.main' } }}
+        onClick={() => loadSiteLedger(params.row)}
+      >
+        {params.value}
+      </Typography>
     )},
     { field: 'city', headerName: 'City', width: 120, renderCell: (params) => (
       <Typography variant="body2">{params.value}</Typography>
@@ -1131,6 +1199,16 @@ export default function AdminPage() {
       const date = new Date(params.value);
       return <Typography variant="body2">{date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography>;
     }},
+    { field: 'actions', headerName: '', width: 80, sortable: false, renderCell: (params) => (
+      <Button 
+        size="small" 
+        variant="text" 
+        onClick={() => loadSiteLedger(params.row)}
+        sx={{ minWidth: 'auto' }}
+      >
+        View
+      </Button>
+    )},
   ];
 
   // ─────────────────────────────────────────
@@ -1346,6 +1424,50 @@ export default function AdminPage() {
                       <option value="IN">Stock In</option>
                       <option value="OUT">Stock Out</option>
                     </TextField>
+                  )}
+                  <TextField
+                    type="date"
+                    size="small"
+                    label="From Date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ minWidth: 140 }}
+                  />
+                  <TextField
+                    type="date"
+                    size="small"
+                    label="To Date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ minWidth: 140 }}
+                  />
+                  <Button 
+                    variant="contained" 
+                    size="small"
+                    onClick={() => {
+                      if (reportView === 'movements') loadStockHistory();
+                      else loadSiteTotals();
+                    }}
+                  >
+                    Apply
+                  </Button>
+                  {(dateFrom || dateTo) && (
+                    <Button 
+                      variant="text" 
+                      size="small"
+                      onClick={() => {
+                        setDateFrom('');
+                        setDateTo('');
+                        setTimeout(() => {
+                          if (reportView === 'movements') loadStockHistory();
+                          else loadSiteTotals();
+                        }, 100);
+                      }}
+                    >
+                      Clear
+                    </Button>
                   )}
                   <Button 
                     variant="outlined" 
@@ -2337,6 +2459,117 @@ export default function AdminPage() {
             <Button variant="contained" onClick={saveSite}>
               {siteModal.isNew ? 'Create Site' : 'Save Changes'}
             </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Site Ledger Modal - Shows dispatch details for a site */}
+        <Dialog 
+          open={siteLedgerModal.open} 
+          onClose={() => setSiteLedgerModal({ open: false, site: null, items: [], loading: false })} 
+          maxWidth="lg" 
+          fullWidth
+        >
+          <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box>
+              <Typography variant="h6">
+                📋 Site Dispatch Ledger: {siteLedgerModal.site?.site_name}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {siteLedgerModal.site?.site_code} • {siteLedgerModal.site?.city}
+                {(dateFrom || dateTo) && ` • Filtered: ${dateFrom || '...'} to ${dateTo || '...'}`}
+              </Typography>
+            </Box>
+            <Button 
+              variant="outlined" 
+              startIcon={<DownloadIcon />} 
+              onClick={downloadSiteLedgerCSV}
+              disabled={siteLedgerModal.items.length === 0}
+            >
+              Download CSV
+            </Button>
+          </DialogTitle>
+          <DialogContent>
+            {siteLedgerModal.loading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : siteLedgerModal.items.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography color="text.secondary">No dispatch records found for this site</Typography>
+              </Box>
+            ) : (
+              <>
+                {/* Summary Cards */}
+                <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+                  <Paper sx={{ p: 2, flex: 1, bgcolor: 'primary.50' }}>
+                    <Typography variant="caption" color="text.secondary">Total Items</Typography>
+                    <Typography variant="h5" fontWeight={700}>
+                      {siteLedgerModal.items.reduce((sum, item) => sum + (item.qty_dispatched || 0), 0)}
+                    </Typography>
+                  </Paper>
+                  <Paper sx={{ p: 2, flex: 1, bgcolor: 'success.50' }}>
+                    <Typography variant="caption" color="text.secondary">Total Value</Typography>
+                    <Typography variant="h5" fontWeight={700} color="success.main">
+                      ${siteLedgerModal.items.reduce((sum, item) => sum + parseFloat(item.dispatch_value || 0), 0).toFixed(2)}
+                    </Typography>
+                  </Paper>
+                  <Paper sx={{ p: 2, flex: 1, bgcolor: 'grey.100' }}>
+                    <Typography variant="caption" color="text.secondary">Total Records</Typography>
+                    <Typography variant="h5" fontWeight={700}>
+                      {siteLedgerModal.items.length}
+                    </Typography>
+                  </Paper>
+                </Stack>
+
+                {/* Ledger Table */}
+                <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+                  <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <Box component="thead" sx={{ bgcolor: 'grey.100', position: 'sticky', top: 0 }}>
+                      <Box component="tr">
+                        <Box component="th" sx={{ p: 1, textAlign: 'left', borderBottom: '2px solid', borderColor: 'divider' }}>Voucher</Box>
+                        <Box component="th" sx={{ p: 1, textAlign: 'left', borderBottom: '2px solid', borderColor: 'divider' }}>Dispatch Date</Box>
+                        <Box component="th" sx={{ p: 1, textAlign: 'left', borderBottom: '2px solid', borderColor: 'divider' }}>SKU</Box>
+                        <Box component="th" sx={{ p: 1, textAlign: 'left', borderBottom: '2px solid', borderColor: 'divider' }}>Item</Box>
+                        <Box component="th" sx={{ p: 1, textAlign: 'center', borderBottom: '2px solid', borderColor: 'divider' }}>Qty</Box>
+                        <Box component="th" sx={{ p: 1, textAlign: 'right', borderBottom: '2px solid', borderColor: 'divider' }}>Unit $</Box>
+                        <Box component="th" sx={{ p: 1, textAlign: 'right', borderBottom: '2px solid', borderColor: 'divider' }}>Total $</Box>
+                      </Box>
+                    </Box>
+                    <Box component="tbody">
+                      {siteLedgerModal.items.map((item, idx) => (
+                        <Box component="tr" key={idx} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                          <Box component="td" sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                            <Typography variant="body2" fontFamily="monospace" fontSize={11}>{item.voucher_number}</Typography>
+                          </Box>
+                          <Box component="td" sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                            {item.dispatched_at ? new Date(item.dispatched_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                          </Box>
+                          <Box component="td" sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                            <Typography variant="body2" fontFamily="monospace" fontSize={11}>{item.sku}</Typography>
+                          </Box>
+                          <Box component="td" sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                            {item.item_name}
+                            {item.size && <Typography variant="caption" color="text.secondary"> ({item.size})</Typography>}
+                          </Box>
+                          <Box component="td" sx={{ p: 1, textAlign: 'center', borderBottom: '1px solid', borderColor: 'divider', fontWeight: 600 }}>
+                            {item.qty_dispatched}
+                          </Box>
+                          <Box component="td" sx={{ p: 1, textAlign: 'right', borderBottom: '1px solid', borderColor: 'divider' }}>
+                            ${parseFloat(item.unit_cost).toFixed(2)}
+                          </Box>
+                          <Box component="td" sx={{ p: 1, textAlign: 'right', borderBottom: '1px solid', borderColor: 'divider', fontWeight: 600, color: 'success.main' }}>
+                            ${parseFloat(item.dispatch_value).toFixed(2)}
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                </Box>
+              </>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setSiteLedgerModal({ open: false, site: null, items: [], loading: false })}>Close</Button>
           </DialogActions>
         </Dialog>
 
