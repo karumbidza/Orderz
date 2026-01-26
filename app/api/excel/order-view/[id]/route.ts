@@ -52,13 +52,14 @@ export async function GET(
     
     const order = orders[0];
     
-    // Get order items
+    // Get order items with dispatch info
     const items = await sql`
       SELECT 
         oi.sku,
         oi.item_name,
         oi.size,
-        oi.qty_requested as quantity,
+        oi.qty_requested,
+        oi.qty_dispatched,
         oi.unit_cost,
         oi.line_total
       FROM order_items oi
@@ -93,8 +94,13 @@ export async function GET(
     .total-row td { border-top: 2px solid #006633; }
     .status { display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 12px; }
     .status-PENDING { background: #fff3cd; color: #856404; }
+    .status-PARTIAL_DISPATCH { background: #ffe0b2; color: #e65100; }
     .status-DISPATCHED { background: #cce5ff; color: #004085; }
     .status-RECEIVED { background: #d4edda; color: #155724; }
+    .pending-row { background: #fff3cd !important; }
+    .complete-row { background: #e8f5e9 !important; }
+    .dispatch-summary { margin-top: 20px; padding: 15px; background: #fff8e1; border: 2px solid #ff9800; border-radius: 5px; }
+    .dispatch-summary h4 { color: #e65100; margin-bottom: 10px; }
     .footer { margin-top: 30px; text-align: center; color: #666; font-size: 11px; }
     @media print {
       body { padding: 0; }
@@ -111,7 +117,7 @@ export async function GET(
 
   <div class="header">
     <h1>REDAN COUPON</h1>
-    <h2>Request Voucher - ${order.voucher_number}</h2>
+    <h2>${order.status === 'PARTIAL_DISPATCH' ? 'Partial Dispatch Note' : order.status === 'DISPATCHED' ? 'Dispatch Note' : 'Request Voucher'} - ${order.voucher_number}</h2>
   </div>
   
   <div class="info-grid">
@@ -135,6 +141,13 @@ export async function GET(
     </div>
   </div>
   
+  ${order.status === 'PARTIAL_DISPATCH' ? `
+  <div class="dispatch-summary">
+    <h4>⚠️ PARTIAL DISPATCH</h4>
+    <p>Some items on this order remain pending and will be dispatched when stock becomes available.</p>
+  </div>
+  ` : ''}
+
   <table>
     <thead>
       <tr>
@@ -142,25 +155,34 @@ export async function GET(
         <th>Item</th>
         <th>SKU</th>
         <th>Size</th>
-        <th>Qty</th>
+        <th>Ordered</th>
+        <th>Dispatched</th>
+        <th>Pending</th>
         <th>Unit Cost</th>
         <th>Total</th>
       </tr>
     </thead>
     <tbody>
-      ${items.map((item: any, index: number) => `
-        <tr>
+      ${items.map((item: any, index: number) => {
+        const dispatched = item.qty_dispatched || 0;
+        const pending = item.qty_requested - dispatched;
+        const isComplete = pending === 0;
+        return `
+        <tr class="${isComplete ? 'complete-row' : pending > 0 ? 'pending-row' : ''}">
           <td>${index + 1}</td>
           <td>${item.item_name}</td>
           <td>${item.sku}</td>
           <td>${item.size || '-'}</td>
-          <td>${item.quantity}</td>
+          <td style="text-align: center;">${item.qty_requested}</td>
+          <td style="text-align: center; font-weight: bold; color: ${dispatched > 0 ? '#2e7d32' : '#999'};">${dispatched > 0 ? dispatched : '-'}</td>
+          <td style="text-align: center; font-weight: bold; color: ${pending > 0 ? '#e65100' : '#2e7d32'};">${pending > 0 ? pending : '✓'}</td>
           <td>$${parseFloat(item.unit_cost).toFixed(2)}</td>
           <td>$${parseFloat(item.line_total).toFixed(2)}</td>
         </tr>
-      `).join('')}
+        `;
+      }).join('')}
       <tr class="total-row">
-        <td colspan="6" style="text-align: right;">TOTAL:</td>
+        <td colspan="8" style="text-align: right;">TOTAL:</td>
         <td>$${parseFloat(order.total_amount).toFixed(2)}</td>
       </tr>
     </tbody>
@@ -175,6 +197,26 @@ export async function GET(
   ${order.received_at ? `
     <p><strong>Received:</strong> ${new Date(order.received_at).toLocaleString()} by ${order.received_by || '-'}</p>
   ` : ''}
+
+  <div style="margin-top: 40px; padding-top: 20px; border-top: 1px dashed #ccc;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+      <div>
+        <p style="font-weight: bold; margin-bottom: 30px;">Issued By (Warehouse):</p>
+        <div style="border-bottom: 1px solid #333; width: 80%; margin-bottom: 5px;">&nbsp;</div>
+        <p style="font-size: 11px; color: #666;">Name & Signature</p>
+        <p style="margin-top: 15px; font-size: 12px;">Date: _______________</p>
+      </div>
+      <div>
+        <p style="font-weight: bold; margin-bottom: 30px;">Received By (Site):</p>
+        <div style="border-bottom: 1px solid #333; width: 80%; margin-bottom: 5px;">&nbsp;</div>
+        <p style="font-size: 11px; color: #666;">Name & Signature</p>
+        <p style="margin-top: 15px; font-size: 12px;">Date: _______________</p>
+      </div>
+    </div>
+    <p style="text-align: center; font-size: 11px; color: #666; margin-top: 20px;">
+      Please verify all items received and sign above. Report any discrepancies immediately.
+    </p>
+  </div>
   
   <div class="footer">
     <p>Generated on ${new Date().toLocaleString()}</p>
