@@ -643,9 +643,11 @@ export default function AdminPage() {
     const matchesSearch = searchQuery === '' || 
       order.voucher_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.site_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.site_city.toLowerCase().includes(searchQuery.toLowerCase());
+      order.site_city.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (order.category || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesCategory = categoryFilter === 'all' || order.category === categoryFilter;
+    return matchesSearch && matchesStatus && matchesCategory;
   });
 
   const filteredStock = stock.filter(item => {
@@ -682,6 +684,7 @@ export default function AdminPage() {
   });
 
   const uniqueCategories = Array.from(new Set(stock.map(s => s.category)));
+  const uniqueOrderCategories = Array.from(new Set(orders.map(o => o.category).filter(Boolean)));
   const uniqueStatuses = Array.from(new Set(orders.map(o => o.status)));
 
   // ─────────────────────────────────────────
@@ -691,20 +694,23 @@ export default function AdminPage() {
     { field: 'voucher_number', headerName: 'Order #', width: 130, renderCell: (params) => (
       <Typography variant="body2" fontFamily="monospace" fontWeight={500}>{params.value}</Typography>
     )},
+    { field: 'category', headerName: 'Category', width: 100, renderCell: (params) => (
+      <Chip label={params.value || 'N/A'} size="small" variant="outlined" sx={{ fontSize: 11 }} />
+    )},
     { field: 'site_name', headerName: 'Site', width: 140, renderCell: (params) => (
       <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
     )},
-    { field: 'site_city', headerName: 'City', width: 110, renderCell: (params) => (
+    { field: 'site_city', headerName: 'City', width: 100, renderCell: (params) => (
       <Typography variant="body2" color="text.secondary">{params.value}</Typography>
     )},
-    { field: 'site_address', headerName: 'Address', width: 160, renderCell: (params) => (
+    { field: 'site_address', headerName: 'Address', width: 140, renderCell: (params) => (
       <Tooltip title={params.value || ''} arrow placement="top">
         <Typography variant="body2" color="text.secondary" noWrap sx={{ cursor: 'pointer' }}>
           {params.value || '—'}
         </Typography>
       </Tooltip>
     )},
-    { field: 'status', headerName: 'Status', width: 140, renderCell: (params) => (
+    { field: 'status', headerName: 'Status', width: 130, renderCell: (params) => (
       <Chip label={params.value} color={STATUS_COLORS[params.value] || 'default'} size="small" />
     )},
     { field: 'total_amount', headerName: 'Total', width: 110, align: 'right', headerAlign: 'right', renderCell: (params) => (
@@ -1012,20 +1018,36 @@ export default function AdminPage() {
               />
               <FilterIcon sx={{ color: 'text.secondary' }} />
               {activeTab === 'orders' && (
-                <TextField
-                  select
-                  size="small"
-                  label="Status"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  SelectProps={{ native: true }}
-                  sx={{ minWidth: 150 }}
-                >
-                  <option value="all">All Statuses</option>
-                  {uniqueStatuses.map(status => (
-                    <option key={status} value={status}>{status}</option>
-                  ))}
-                </TextField>
+                <>
+                  <TextField
+                    select
+                    size="small"
+                    label="Status"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    SelectProps={{ native: true }}
+                    sx={{ minWidth: 140 }}
+                  >
+                    <option value="all">All Statuses</option>
+                    {uniqueStatuses.map(status => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </TextField>
+                  <TextField
+                    select
+                    size="small"
+                    label="Category"
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    SelectProps={{ native: true }}
+                    sx={{ minWidth: 130 }}
+                  >
+                    <option value="all">All Categories</option>
+                    {uniqueOrderCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </TextField>
+                </>
               )}
               {activeTab === 'inventory' && (
                 <TextField
