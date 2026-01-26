@@ -42,6 +42,7 @@ export async function POST(
     await sql`
       UPDATE orders 
       SET status = 'DECLINED',
+          decline_reason = ${reason},
           notes = COALESCE(notes, '') || ' | Declined: ' || ${reason},
           updated_at = NOW()
       WHERE id = ${orderId}

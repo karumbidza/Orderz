@@ -30,6 +30,7 @@ export async function GET(
         o.order_date,
         o.requested_by,
         o.notes,
+        o.decline_reason,
         o.dispatched_at,
         o.dispatched_by,
         o.received_at,
@@ -59,6 +60,7 @@ export async function GET(
         oi.item_name,
         oi.size,
         oi.qty_requested,
+        oi.qty_approved,
         oi.qty_dispatched,
         oi.unit_cost,
         oi.line_total
@@ -97,10 +99,17 @@ export async function GET(
     .status-PARTIAL_DISPATCH { background: #ffe0b2; color: #e65100; }
     .status-DISPATCHED { background: #cce5ff; color: #004085; }
     .status-RECEIVED { background: #d4edda; color: #155724; }
+    .status-DECLINED { background: #f8d7da; color: #721c24; }
     .pending-row { background: #fff3cd !important; }
     .complete-row { background: #e8f5e9 !important; }
+    .adjusted-row { background: #e3f2fd !important; }
     .dispatch-summary { margin-top: 20px; padding: 15px; background: #fff8e1; border: 2px solid #ff9800; border-radius: 5px; }
     .dispatch-summary h4 { color: #e65100; margin-bottom: 10px; }
+    .decline-notice { margin-top: 20px; padding: 15px; background: #f8d7da; border: 2px solid #dc3545; border-radius: 5px; }
+    .decline-notice h4 { color: #721c24; margin-bottom: 10px; }
+    .adjustment-notice { margin-top: 20px; padding: 15px; background: #e3f2fd; border: 2px solid #2196f3; border-radius: 5px; }
+    .adjustment-notice h4 { color: #1565c0; margin-bottom: 10px; }
+    .adjustment-notice ul { margin: 10px 0 0 20px; }
     .footer { margin-top: 30px; text-align: center; color: #666; font-size: 11px; }
     @media print {
       body { padding: 0; }
@@ -117,7 +126,7 @@ export async function GET(
 
   <div class="header">
     <h1>REDAN COUPON</h1>
-    <h2>${order.status === 'PARTIAL_DISPATCH' ? 'Partial Dispatch Note' : order.status === 'DISPATCHED' ? 'Dispatch Note' : 'Request Voucher'} - ${order.voucher_number}</h2>
+    <h2>${order.status === 'DECLINED' ? 'DECLINED Order' : order.status === 'PARTIAL_DISPATCH' ? 'Partial Dispatch Note' : order.status === 'DISPATCHED' ? 'Dispatch Note' : 'Request Voucher'} - ${order.voucher_number}</h2>
   </div>
   
   <div class="info-grid">
@@ -141,12 +150,35 @@ export async function GET(
     </div>
   </div>
   
+  ${order.status === 'DECLINED' ? `
+  <div class="decline-notice">
+    <h4>❌ ORDER DECLINED</h4>
+    <p><strong>Reason:</strong> ${order.decline_reason || 'No reason provided'}</p>
+  </div>
+  ` : ''}
+
   ${order.status === 'PARTIAL_DISPATCH' ? `
   <div class="dispatch-summary">
     <h4>⚠️ PARTIAL DISPATCH</h4>
     <p>Some items on this order remain pending and will be dispatched when stock becomes available.</p>
   </div>
   ` : ''}
+
+  ${(() => {
+    const adjustedItems = items.filter((item: any) => item.qty_approved !== null && item.qty_approved !== item.qty_requested);
+    if (adjustedItems.length === 0) return '';
+    return `
+  <div class="adjustment-notice">
+    <h4>📝 QUANTITY ADJUSTMENTS BY ADMIN</h4>
+    <p>The following items had their quantities adjusted:</p>
+    <ul>
+      ${adjustedItems.map((item: any) => `
+        <li><strong>${item.item_name}</strong> (${item.sku}): Requested ${item.qty_requested} → Approved ${item.qty_approved}</li>
+      `).join('')}
+    </ul>
+  </div>
+    `;
+  })()}
 
   <table>
     <thead>
