@@ -203,8 +203,8 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Perform dispatch - deduct stock and update qty_dispatched
-    // Using individual queries like test-update does (which works)
+    // Perform dispatch - update qty_dispatched and create stock movement
+    // Stock level is automatically updated by database trigger (trg_update_stock_after_movement)
     const dispatched: any[] = [];
     
     for (const item of dispatchResults) {
@@ -212,25 +212,9 @@ export async function POST(
         const qtyToDispatch = Number(item.qty_to_dispatch);
         const itemId = Number(item.item_id);
         const orderItemId = Number(item.id);
-        console.log(`Dispatching item_id=${itemId}, order_item_id=${orderItemId}, qty=${qtyToDispatch}`);
         
-        // Get before value (for debugging)
+        // Get current stock (for response)
         const beforeStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${itemId} AND warehouse_id = 2`;
-        console.log(`BEFORE: item ${itemId} has ${beforeStock[0]?.quantity_on_hand}`);
-        
-        // Update stock_levels FIRST (just like test-update does)
-        const stockResult = await sql`
-          UPDATE stock_levels 
-          SET quantity_on_hand = quantity_on_hand - ${qtyToDispatch},
-              last_updated = NOW()
-          WHERE item_id = ${itemId} AND warehouse_id = 2
-          RETURNING item_id, quantity_on_hand, last_updated
-        `;
-        console.log('Stock UPDATE result:', stockResult);
-        
-        // Verify after (for debugging)
-        const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${itemId} AND warehouse_id = 2`;
-        console.log(`AFTER: item ${itemId} has ${afterStock[0]?.quantity_on_hand}`);
         
         // Update qty_dispatched on order_items
         await sql`
@@ -239,13 +223,13 @@ export async function POST(
           WHERE id = ${orderItemId}
         `;
         
-        // Record stock movement
+        // Record stock movement - trigger will automatically update stock_levels
         await sql`
           INSERT INTO stock_movements (item_id, warehouse_id, quantity, movement_type, reference_type, reference_id, reason, created_at)
           VALUES (
             ${itemId},
             2,
-            ${-qtyToDispatch},
+            ${qtyToDispatch},
             'OUT',
             'ORDER',
             ${String(orderId)},
@@ -253,6 +237,9 @@ export async function POST(
             NOW()
           )
         `;
+        
+        // Get updated stock (after trigger)
+        const afterStock = await sql`SELECT quantity_on_hand FROM stock_levels WHERE item_id = ${itemId} AND warehouse_id = 2`;
 
         dispatched.push({
           order_item_id: item.id,
@@ -261,7 +248,6 @@ export async function POST(
           qty_dispatched: item.qty_to_dispatch,
           qty_remaining: item.remaining_after,
           stock_before: beforeStock[0]?.quantity_on_hand,
-          stock_update_result: stockResult,
           stock_after: afterStock[0]?.quantity_on_hand
         });
       }
