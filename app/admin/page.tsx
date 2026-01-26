@@ -1102,30 +1102,29 @@ export default function AdminPage() {
   ];
 
   const historyColumns: GridColDef[] = [
-    { field: 'created_at', headerName: 'Date/Time', width: 150, renderCell: (params) => {
+    { field: 'created_at', headerName: 'Date', width: 100, renderCell: (params) => {
       const date = new Date(params.value);
-      return (
-        <Box>
-          <Typography variant="body2">{date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography>
-          <Typography variant="caption" color="text.secondary">{date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</Typography>
-        </Box>
-      );
+      return <Typography variant="body2">{date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography>;
     }},
-    { field: 'sku', headerName: 'SKU', width: 140, renderCell: (params) => (
-      <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
+    { field: 'time', headerName: 'Time', width: 70, renderCell: (params) => {
+      const date = new Date(params.row.created_at);
+      return <Typography variant="body2" color="text.secondary">{date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</Typography>;
+    }},
+    { field: 'sku', headerName: 'SKU', width: 120, renderCell: (params) => (
+      <Typography variant="body2" fontFamily="monospace" fontSize={11} sx={{ bgcolor: 'grey.100', px: 0.75, py: 0.25, borderRadius: 0.5 }}>{params.value}</Typography>
     )},
-    { field: 'product', headerName: 'Product', flex: 1, minWidth: 160, renderCell: (params) => (
-      <Box>
-        <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
-        <Typography variant="caption" color="text.secondary">{params.row.category}</Typography>
-      </Box>
+    { field: 'product', headerName: 'Product', width: 140, renderCell: (params) => (
+      <Typography variant="body2" fontWeight={500} noWrap>{params.value}</Typography>
     )},
-    { field: 'movement_type', headerName: 'Type', width: 110, renderCell: (params) => {
+    { field: 'category', headerName: 'Category', width: 100, renderCell: (params) => (
+      <Typography variant="body2" color="text.secondary">{params.value || '—'}</Typography>
+    )},
+    { field: 'movement_type', headerName: 'Type', width: 100, renderCell: (params) => {
       const typeConfig: Record<string, { icon: typeof InIcon; color: 'success' | 'warning' | 'error' | 'info'; label: string }> = {
         'IN': { icon: InIcon, color: 'success', label: 'IN' },
         'OUT': { icon: OutIcon, color: 'warning', label: 'OUT' },
-        'DAMAGE': { icon: OutIcon, color: 'error', label: 'DAM...' },
-        'ADJUSTMENT': { icon: InIcon, color: 'info', label: 'ADJ...' },
+        'DAMAGE': { icon: OutIcon, color: 'error', label: 'DAMAGE' },
+        'ADJUSTMENT': { icon: InIcon, color: 'info', label: 'ADJUST' },
       };
       const config = typeConfig[params.value] || typeConfig['OUT'];
       const IconComponent = config.icon;
@@ -1135,10 +1134,11 @@ export default function AdminPage() {
           label={config.label}
           color={config.color}
           size="small"
+          sx={{ fontSize: 10 }}
         />
       );
     }},
-    { field: 'quantity', headerName: 'Qty', width: 90, align: 'right', headerAlign: 'right', renderCell: (params) => {
+    { field: 'quantity', headerName: 'Qty', width: 70, align: 'center', headerAlign: 'center', renderCell: (params) => {
       const isPositive = params.row.movement_type === 'IN' || (params.row.movement_type === 'ADJUSTMENT' && params.value > 0);
       return (
         <Typography variant="body2" fontWeight={600} color={isPositive ? 'success.main' : 'error.main'}>
@@ -1146,20 +1146,20 @@ export default function AdminPage() {
         </Typography>
       );
     }},
-    { field: 'site_name', headerName: 'Destination', width: 160, renderCell: (params) => params.value ? (
-      <Box>
-        <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
-        {params.row.order_number && <Typography variant="caption" color="text.secondary">{params.row.order_number}</Typography>}
-      </Box>
+    { field: 'site_name', headerName: 'Site', width: 120, renderCell: (params) => params.value ? (
+      <Typography variant="body2" fontWeight={500} noWrap>{params.value}</Typography>
     ) : <Typography variant="caption" color="text.secondary">—</Typography>},
-    { field: 'stock_value', headerName: 'Value', width: 110, align: 'right', headerAlign: 'right', renderCell: (params) => {
+    { field: 'order_number', headerName: 'Voucher', width: 110, renderCell: (params) => params.value ? (
+      <Typography variant="body2" fontFamily="monospace" fontSize={11}>{params.value}</Typography>
+    ) : <Typography variant="caption" color="text.secondary">—</Typography>},
+    { field: 'stock_value', headerName: 'Value', width: 90, align: 'right', headerAlign: 'right', renderCell: (params) => {
       const value = params.value ? parseFloat(params.value) : Math.abs(params.row.quantity) * parseFloat(params.row.cost || 0);
       const isPositive = params.row.movement_type === 'IN' || (params.row.movement_type === 'ADJUSTMENT' && params.row.quantity > 0);
       return <Typography variant="body2" fontWeight={500} color={isPositive ? 'success.main' : 'error.main'}>${value.toFixed(2)}</Typography>;
     }},
-    { field: 'reason', headerName: 'Reference', flex: 1, minWidth: 150, renderCell: (params) => (
-      <Tooltip title={params.value}>
-        <Typography variant="body2" color="text.secondary" noWrap>{params.value}</Typography>
+    { field: 'reason', headerName: 'Reference', flex: 1, minWidth: 140, renderCell: (params) => (
+      <Tooltip title={params.value || ''}>
+        <Typography variant="body2" color="text.secondary" noWrap fontSize={12}>{params.value || '—'}</Typography>
       </Tooltip>
     )},
   ];
