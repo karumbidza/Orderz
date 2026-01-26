@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useUser } from '@clerk/nextjs';
 import {
   Box,
   Paper,
@@ -195,6 +196,7 @@ interface StockMovement {
   reference_id: string | null;
   reason: string;
   created_at: string;
+  created_by: string | null;
   sku: string;
   product: string;
   category: string;
@@ -246,6 +248,9 @@ const STATUS_COLORS: Record<string, 'warning' | 'info' | 'secondary' | 'success'
 // MAIN COMPONENT
 // ─────────────────────────────────────────
 export default function AdminPage() {
+  const { user } = useUser();
+  const userEmail = user?.primaryEmailAddress?.emailAddress || 'Admin';
+  
   const [activeTab, setActiveTab] = useState<TabValue>('orders');
   const [reportView, setReportView] = useState<ReportView>('movements');
   const [orders, setOrders] = useState<Order[]>([]);
@@ -579,7 +584,8 @@ export default function AdminPage() {
             item_id: stockViewModal.item.item_id, 
             warehouse_id: 2, 
             quantity: qty, 
-            reason: stockViewModal.reason || 'Stock addition via admin' 
+            reason: stockViewModal.reason || 'Stock addition via admin',
+            created_by: userEmail
           }),
         });
         const data = await res.json();
@@ -599,7 +605,8 @@ export default function AdminPage() {
             quantity: -qty,
             movement_type: stockViewModal.reason === 'RETURN_TO_SUPPLIER' ? 'RETURN' : 
                            stockViewModal.reason === 'DAMAGED' ? 'DAMAGE' : 'ADJUSTMENT',
-            reason: stockViewModal.reason
+            reason: stockViewModal.reason,
+            created_by: userEmail
           }),
         });
         const data = await res.json();
@@ -1455,8 +1462,8 @@ export default function AdminPage() {
                       <Box component="th" sx={{ p: 1.5, textAlign: 'left' }}>Date</Box>
                       <Box component="th" sx={{ p: 1.5, textAlign: 'center' }}>Type</Box>
                       <Box component="th" sx={{ p: 1.5, textAlign: 'right' }}>Qty</Box>
-                      <Box component="th" sx={{ p: 1.5, textAlign: 'right' }}>Value</Box>
-                      <Box component="th" sx={{ p: 1.5, textAlign: 'left' }}>Destination/Reference</Box>
+                      <Box component="th" sx={{ p: 1.5, textAlign: 'left' }}>Reference</Box>
+                      <Box component="th" sx={{ p: 1.5, textAlign: 'left' }}>By</Box>
                     </Box>
                   </Box>
                   <Box component="tbody">
@@ -1479,16 +1486,18 @@ export default function AdminPage() {
                             {movement.movement_type === 'IN' ? '+' : '−'}{Math.abs(movement.quantity)}
                           </Typography>
                         </Box>
-                        <Box component="td" sx={{ p: 1.5, textAlign: 'right' }}>
-                          <Typography variant="body2">${(Math.abs(movement.quantity) * parseFloat(movement.cost || '0')).toFixed(2)}</Typography>
-                        </Box>
                         <Box component="td" sx={{ p: 1.5 }}>
-                          <Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>
+                          <Typography variant="body2" noWrap sx={{ maxWidth: 140 }}>
                             {movement.site_name || movement.reason || '—'}
                           </Typography>
                           {movement.order_number && (
-                            <Typography variant="caption" color="primary.main">Order #{movement.order_number}</Typography>
+                            <Typography variant="caption" color="primary.main">#{movement.order_number}</Typography>
                           )}
+                        </Box>
+                        <Box component="td" sx={{ p: 1.5 }}>
+                          <Typography variant="body2" noWrap sx={{ maxWidth: 120 }} color="text.secondary">
+                            {movement.created_by || '—'}
+                          </Typography>
                         </Box>
                       </Box>
                     ))}

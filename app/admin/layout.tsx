@@ -1,36 +1,42 @@
 'use client';
 
-import { UserButton } from '@clerk/nextjs';
+import { UserButton, useUser } from '@clerk/nextjs';
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { user } = useUser();
+
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-slate-50">
       {/* Admin Header with User Profile */}
-      <header className="bg-slate-900 border-b border-slate-700">
+      <header className="bg-slate-900 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-14">
             {/* Logo / Title */}
-            <div>
-              <h1 className="text-lg font-semibold text-white">Redan Coupon</h1>
-              <p className="text-xs text-slate-400">Admin Portal</p>
+            <div className="flex items-center gap-3">
+              <span className="text-xl font-bold text-white">Redan</span>
+              <span className="text-slate-500 text-sm hidden sm:block">Admin</span>
             </div>
             
             {/* User Profile */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              {user && (
+                <span className="text-sm text-slate-300 hidden sm:block">
+                  {user.primaryEmailAddress?.emailAddress}
+                </span>
+              )}
               <UserButton 
                 afterSignOutUrl="/"
                 appearance={{
                   elements: {
-                    avatarBox: "w-10 h-10",
+                    avatarBox: "w-9 h-9 border-2 border-slate-700",
                     userButtonPopoverCard: "shadow-xl",
                     userButtonPopoverActionButton: "text-slate-700 hover:bg-slate-100",
                   }
                 }}
-                showName={true}
               />
             </div>
           </div>

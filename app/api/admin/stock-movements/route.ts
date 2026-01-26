@@ -164,7 +164,8 @@ export async function POST(request: NextRequest) {
       reason, 
       reference_type, 
       reference_id,
-      to_warehouse_id // For transfers
+      to_warehouse_id, // For transfers
+      created_by // User who performed the action
     } = body;
 
     // Validate required fields
@@ -218,10 +219,10 @@ export async function POST(request: NextRequest) {
     // Create movement record
     const movement = await sql`
       INSERT INTO stock_movements 
-        (item_id, warehouse_id, movement_type, quantity, reference_type, reference_id, reason, created_at)
+        (item_id, warehouse_id, movement_type, quantity, reference_type, reference_id, reason, created_by, created_at)
       VALUES 
         (${item_id}, ${warehouse_id}, ${movement_type}, ${adjustedQuantity}, 
-         ${reference_type || 'MANUAL'}, ${reference_id || null}, ${reason || ''}, NOW())
+         ${reference_type || 'MANUAL'}, ${reference_id || null}, ${reason || ''}, ${created_by || 'Admin'}, NOW())
       RETURNING id, item_id, warehouse_id, movement_type, quantity, created_at
     `;
 
@@ -229,10 +230,10 @@ export async function POST(request: NextRequest) {
     if (movement_type === 'TRANSFER' && to_warehouse_id) {
       await sql`
         INSERT INTO stock_movements 
-          (item_id, warehouse_id, movement_type, quantity, reference_type, reference_id, reason, created_at)
+          (item_id, warehouse_id, movement_type, quantity, reference_type, reference_id, reason, created_by, created_at)
         VALUES 
           (${item_id}, ${to_warehouse_id}, 'IN', ${Math.abs(quantity)}, 
-           'TRANSFER', ${movement[0].id.toString()}, ${`Transfer from warehouse ${warehouse_id}`}, NOW())
+           'TRANSFER', ${movement[0].id.toString()}, ${`Transfer from warehouse ${warehouse_id}`}, ${created_by || 'Admin'}, NOW())
       `;
 
       // Update destination stock

@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { item_id, warehouse_id, quantity, reason, reference_id, grn_number } = body;
+    const { item_id, warehouse_id, quantity, reason, reference_id, grn_number, created_by } = body;
 
     if (!item_id || !warehouse_id || !quantity || quantity <= 0) {
       return NextResponse.json({ 
@@ -99,10 +99,10 @@ export async function POST(request: NextRequest) {
     // Create stock movement record
     const movement = await sql`
       INSERT INTO stock_movements 
-        (item_id, warehouse_id, movement_type, quantity, reference_type, reference_id, reason, created_at)
+        (item_id, warehouse_id, movement_type, quantity, reference_type, reference_id, reason, created_by, created_at)
       VALUES 
         (${item_id}, ${warehouse_id}, 'IN', ${quantity}, 
-         ${referenceType}, ${reference_id || grn_number || null}, ${reason || 'Stock added via admin'}, NOW())
+         ${referenceType}, ${reference_id || grn_number || null}, ${reason || 'Stock added via admin'}, ${created_by || 'Admin'}, NOW())
       RETURNING id, item_id, quantity
     `;
 
