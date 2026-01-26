@@ -11,12 +11,13 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const item_id = searchParams.get('item_id');
+    const itemIdNum = item_id ? parseInt(item_id) : null;
     const limit = parseInt(searchParams.get('limit') || '100');
     const days = parseInt(searchParams.get('days') || '30');
 
     let movements;
 
-    if (item_id) {
+    if (itemIdNum) {
       // Get history for specific item
       movements = await sql`
         SELECT 
@@ -54,8 +55,7 @@ export async function GET(request: NextRequest) {
         FROM stock_movements sm
         JOIN items i ON sm.item_id = i.id
         JOIN warehouses w ON sm.warehouse_id = w.id
-        WHERE sm.item_id = ${item_id}
-          AND sm.created_at >= NOW() - INTERVAL '30 days'
+        WHERE sm.item_id = ${itemIdNum}
         ORDER BY sm.created_at DESC
         LIMIT ${limit}
       `;
