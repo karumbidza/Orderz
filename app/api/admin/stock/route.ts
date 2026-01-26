@@ -5,21 +5,22 @@ export const dynamic = 'force-dynamic';
 
 // ─────────────────────────────────────────────
 // GET /api/admin/stock - Get stock levels with item details
+// Shows ALL items, even those with no stock records (quantity = 0)
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const warehouse_id = searchParams.get('warehouse_id');
+    const warehouse_id = searchParams.get('warehouse_id') || '2'; // Default to HEAD-OFFICE
     const category = searchParams.get('category');
 
     let stockData;
     
-    if (warehouse_id && category) {
+    if (category) {
       stockData = await sql`
         SELECT 
-          sl.item_id,
-          sl.warehouse_id,
-          sl.quantity_on_hand,
+          i.id as item_id,
+          ${warehouse_id}::int as warehouse_id,
+          COALESCE(sl.quantity_on_hand, 0) as quantity_on_hand,
           sl.last_updated,
           i.sku,
           i.product,
@@ -29,46 +30,21 @@ export async function GET(request: NextRequest) {
           i.unit,
           i.cost,
           i.is_active,
-          w.code as warehouse_code,
-          w.name as warehouse_name,
-          (sl.quantity_on_hand * i.cost::numeric) as stock_value
-        FROM stock_levels sl
-        JOIN items i ON sl.item_id = i.id
-        JOIN warehouses w ON sl.warehouse_id = w.id
-        WHERE sl.warehouse_id = ${warehouse_id}
+          'HEAD-OFFICE' as warehouse_code,
+          'Head Office Warehouse' as warehouse_name,
+          (COALESCE(sl.quantity_on_hand, 0) * i.cost::numeric) as stock_value
+        FROM items i
+        LEFT JOIN stock_levels sl ON sl.item_id = i.id AND sl.warehouse_id = ${warehouse_id}::int
+        WHERE i.is_active = true
           AND i.category = ${category}
         ORDER BY i.product, i.role, i.size
-      `;
-    } else if (warehouse_id) {
-      stockData = await sql`
-        SELECT 
-          sl.item_id,
-          sl.warehouse_id,
-          sl.quantity_on_hand,
-          sl.last_updated,
-          i.sku,
-          i.product,
-          i.category,
-          i.role,
-          i.size,
-          i.unit,
-          i.cost,
-          i.is_active,
-          w.code as warehouse_code,
-          w.name as warehouse_name,
-          (sl.quantity_on_hand * i.cost::numeric) as stock_value
-        FROM stock_levels sl
-        JOIN items i ON sl.item_id = i.id
-        JOIN warehouses w ON sl.warehouse_id = w.id
-        WHERE sl.warehouse_id = ${warehouse_id}
-        ORDER BY i.category, i.product, i.role, i.size
       `;
     } else {
       stockData = await sql`
         SELECT 
-          sl.item_id,
-          sl.warehouse_id,
-          sl.quantity_on_hand,
+          i.id as item_id,
+          ${warehouse_id}::int as warehouse_id,
+          COALESCE(sl.quantity_on_hand, 0) as quantity_on_hand,
           sl.last_updated,
           i.sku,
           i.product,
@@ -78,13 +54,13 @@ export async function GET(request: NextRequest) {
           i.unit,
           i.cost,
           i.is_active,
-          w.code as warehouse_code,
-          w.name as warehouse_name,
-          (sl.quantity_on_hand * i.cost::numeric) as stock_value
-        FROM stock_levels sl
-        JOIN items i ON sl.item_id = i.id
-        JOIN warehouses w ON sl.warehouse_id = w.id
-        ORDER BY w.code, i.category, i.product, i.role, i.size
+          'HEAD-OFFICE' as warehouse_code,
+          'Head Office Warehouse' as warehouse_name,
+          (COALESCE(sl.quantity_on_hand, 0) * i.cost::numeric) as stock_value
+        FROM items i
+        LEFT JOIN stock_levels sl ON sl.item_id = i.id AND sl.warehouse_id = ${warehouse_id}::int
+        WHERE i.is_active = true
+        ORDER BY i.category, i.product, i.role, i.size
       `;
     }
 
