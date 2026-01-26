@@ -149,6 +149,10 @@ interface OrderDetail {
   status: string;
   total_amount: string;
   created_at: string;
+  dispatched_at?: string;
+  dispatched_by?: string;
+  received_at?: string;
+  received_by?: string;
   category: string;
   requested_by: string;
   notes: string;
