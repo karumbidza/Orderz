@@ -7,10 +7,10 @@ export const dynamic = 'force-dynamic';
 export async function DELETE() {
   try {
     // Delete stock movements first
-    const movements = await sql`DELETE FROM stock_movements RETURNING id`;
+    const movements = await sql`DELETE FROM stock_movements RETURNING item_id`;
     
     // Delete stock levels
-    const levels = await sql`DELETE FROM stock_levels RETURNING id`;
+    const levels = await sql`DELETE FROM stock_levels RETURNING item_id`;
     
     return NextResponse.json({ 
       success: true, 
