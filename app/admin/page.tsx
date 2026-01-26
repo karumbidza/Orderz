@@ -288,7 +288,9 @@ export default function AdminPage() {
     action: 'none' | 'add' | 'remove';
     quantity: string;
     reason: string;
-  }>({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '' });
+    editingCost: boolean;
+    newCost: string;
+  }>({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '', editingCost: false, newCost: '' });
   const [bulkReceiveModal, setBulkReceiveModal] = useState<{
     open: boolean;
     items: { item_id: number; sku: string; product: string; quantity: string }[];
@@ -541,7 +543,7 @@ export default function AdminPage() {
 
   // Stock View Modal Functions
   const openStockViewModal = async (item: StockItem) => {
-    setStockViewModal({ open: true, item, history: [], loading: true, action: 'none', quantity: '', reason: '' });
+    setStockViewModal({ open: true, item, history: [], loading: true, action: 'none', quantity: '', reason: '', editingCost: false, newCost: '' });
     try {
       const res = await fetch(`/api/admin/stock/history?item_id=${item.item_id}&limit=50`);
       const data = await res.json();
@@ -611,6 +613,36 @@ export default function AdminPage() {
       showMessage('Failed to update stock', 'error');
     }
     setStockViewModal(prev => ({ ...prev, action: 'none', quantity: '', reason: '' }));
+  };
+
+  const handleUpdateCost = async () => {
+    const newCost = parseFloat(stockViewModal.newCost);
+    if (!stockViewModal.item || isNaN(newCost) || newCost < 0) {
+      showMessage('Enter a valid cost', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/items/${stockViewModal.item.item_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cost: newCost }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage('Unit cost updated successfully', 'success');
+        loadStock();
+        // Update local state
+        setStockViewModal(prev => ({
+          ...prev,
+          item: prev.item ? { ...prev.item, cost: String(newCost) } : null,
+          editingCost: false,
+          newCost: ''
+        }));
+      } else showMessage('Error: ' + data.error, 'error');
+    } catch {
+      showMessage('Failed to update cost', 'error');
+    }
   };
 
   const openBulkReceiveModal = () => {
@@ -1339,7 +1371,7 @@ export default function AdminPage() {
         {/* Stock View Modal - Item History with Add/Remove Actions */}
         <Dialog 
           open={stockViewModal.open} 
-          onClose={() => setStockViewModal({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '' })} 
+          onClose={() => setStockViewModal({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '', editingCost: false, newCost: '' })} 
           maxWidth="md" 
           fullWidth
         >
@@ -1352,7 +1384,7 @@ export default function AdminPage() {
                 </Typography>
               )}
             </Box>
-            <IconButton onClick={() => setStockViewModal({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '' })}>
+            <IconButton onClick={() => setStockViewModal({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '', editingCost: false, newCost: '' })}>
               <CloseIcon />
             </IconButton>
           </DialogTitle>
@@ -1366,9 +1398,32 @@ export default function AdminPage() {
                     {stockViewModal.item.quantity_on_hand}
                   </Typography>
                 </Box>
-                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
+                <Box sx={{ p: 2, bgcolor: stockViewModal.editingCost ? 'primary.50' : 'grey.50', borderRadius: 1, textAlign: 'center', position: 'relative' }}>
                   <Typography variant="caption" color="text.secondary">Unit Cost</Typography>
-                  <Typography variant="h5" fontWeight={700}>${parseFloat(stockViewModal.item.cost).toFixed(2)}</Typography>
+                  {stockViewModal.editingCost ? (
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ mt: 0.5 }}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={stockViewModal.newCost}
+                        onChange={(e) => setStockViewModal(prev => ({ ...prev, newCost: e.target.value }))}
+                        inputProps={{ min: 0, step: 0.01 }}
+                        sx={{ width: 80 }}
+                        autoFocus
+                      />
+                      <IconButton size="small" color="success" onClick={handleUpdateCost}>
+                        <AddIcon />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => setStockViewModal(prev => ({ ...prev, editingCost: false, newCost: '' }))}>
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  ) : (
+                    <Box sx={{ cursor: 'pointer' }} onClick={() => setStockViewModal(prev => ({ ...prev, editingCost: true, newCost: prev.item?.cost || '' }))}>
+                      <Typography variant="h5" fontWeight={700}>${parseFloat(stockViewModal.item.cost).toFixed(2)}</Typography>
+                      <Typography variant="caption" color="primary.main">Click to edit</Typography>
+                    </Box>
+                  )}
                 </Box>
                 <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
                   <Typography variant="caption" color="text.secondary">Stock Value</Typography>
