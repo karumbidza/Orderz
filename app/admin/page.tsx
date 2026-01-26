@@ -1735,7 +1735,16 @@ export default function AdminPage() {
                   '@media print': { display: 'block' }
                 }}>
                   <Typography variant="h4" sx={{ color: '#006633', fontWeight: 700 }}>REDAN COUPON</Typography>
-                  <Typography variant="h6">Request Voucher - {orderModal.order.order_number}</Typography>
+                  <Typography variant="h6">
+                    {orderModal.order.status === 'PARTIAL_DISPATCH' ? 'Partial Dispatch Note' : 
+                     orderModal.order.status === 'DISPATCHED' ? 'Dispatch Note' : 
+                     'Request Voucher'} - {orderModal.order.order_number}
+                  </Typography>
+                  {orderModal.order.status === 'PARTIAL_DISPATCH' && (
+                    <Typography variant="body2" sx={{ mt: 1, color: 'warning.dark', fontWeight: 500 }}>
+                      ⚠ PARTIAL DISPATCH - Some items pending
+                    </Typography>
+                  )}
                 </Box>
                 
                 {/* Order Info */}
@@ -1802,11 +1811,27 @@ export default function AdminPage() {
                   </Box>
                 )}
                 {orderModal.order.status === 'PARTIAL_DISPATCH' && (
-                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.main' }} className="no-print">
-                    <Typography variant="body2" color="warning.dark" sx={{ fontWeight: 600 }}>
-                      ⚠ Partially Dispatched - Adjust quantities below and dispatch remaining items.
-                    </Typography>
-                  </Box>
+                  <>
+                    {/* Print version of partial dispatch banner */}
+                    <Box className="print-only" sx={{ 
+                      display: 'none',
+                      mb: 2, 
+                      p: 1.5, 
+                      border: '2px solid #ed6c02', 
+                      borderRadius: 1,
+                      '@media print': { display: 'block' }
+                    }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        ⚠ PARTIAL DISPATCH - This delivery contains only some items from the order. Remaining items will be dispatched when stock is available.
+                      </Typography>
+                    </Box>
+                    {/* Screen version */}
+                    <Box sx={{ mb: 2, p: 1.5, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.main' }} className="no-print">
+                      <Typography variant="body2" color="warning.dark" sx={{ fontWeight: 600 }}>
+                        ⚠ Partially Dispatched - Adjust quantities below and dispatch remaining items.
+                      </Typography>
+                    </Box>
+                  </>
                 )}
 
                 {/* Items Table - Simplified */}
@@ -1949,6 +1974,80 @@ export default function AdminPage() {
                     </Box>
                   </Box>
                 </Paper>
+
+                {/* Print-only Summary for Partial Dispatch */}
+                {orderModal.order.status === 'PARTIAL_DISPATCH' && orderModal.dispatchInfo && (
+                  <Box className="print-only" sx={{ 
+                    display: 'none',
+                    mt: 3, 
+                    p: 2, 
+                    border: '1px solid #ccc',
+                    borderRadius: 1,
+                    '@media print': { display: 'block' }
+                  }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1, borderBottom: '1px solid #006633', pb: 1 }}>
+                      Dispatch Summary
+                    </Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.dark' }}>✓ Items Dispatched (This Delivery):</Typography>
+                        {orderModal.dispatchInfo.items.filter((i: any) => i.qty_dispatched > 0).map((item: any) => (
+                          <Typography key={item.id} variant="body2" sx={{ ml: 2, fontSize: 12 }}>
+                            • {item.item_name} ({item.sku}): {item.qty_dispatched} of {item.qty_requested}
+                          </Typography>
+                        ))}
+                        {orderModal.dispatchInfo.items.filter((i: any) => i.qty_dispatched > 0).length === 0 && (
+                          <Typography variant="body2" sx={{ ml: 2, fontSize: 12, color: 'text.secondary' }}>None</Typography>
+                        )}
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.dark' }}>⚠ Items Pending (To Follow):</Typography>
+                        {orderModal.dispatchInfo.items.filter((i: any) => (i.qty_requested - (i.qty_dispatched || 0)) > 0).map((item: any) => {
+                          const pending = item.qty_requested - (item.qty_dispatched || 0);
+                          return (
+                            <Typography key={item.id} variant="body2" sx={{ ml: 2, fontSize: 12 }}>
+                              • {item.item_name} ({item.sku}): {pending} pending
+                            </Typography>
+                          );
+                        })}
+                      </Box>
+                    </Box>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 2, fontStyle: 'italic' }}>
+                      Pending items will be dispatched when stock becomes available.
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Print-only Signature Section */}
+                <Box className="print-only" sx={{ 
+                  display: 'none',
+                  mt: 4, 
+                  pt: 3,
+                  borderTop: '1px dashed #ccc',
+                  '@media print': { display: 'block', pageBreakInside: 'avoid' }
+                }}>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 3 }}>Issued By (Warehouse):</Typography>
+                      <Box sx={{ borderBottom: '1px solid #333', width: '80%', mb: 1 }}>&nbsp;</Box>
+                      <Typography variant="caption">Name & Signature</Typography>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="caption">Date: _______________</Typography>
+                      </Box>
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 3 }}>Received By (Site):</Typography>
+                      <Box sx={{ borderBottom: '1px solid #333', width: '80%', mb: 1 }}>&nbsp;</Box>
+                      <Typography variant="caption">Name & Signature</Typography>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="caption">Date: _______________</Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+                  <Typography variant="caption" sx={{ display: 'block', mt: 3, textAlign: 'center', color: 'text.secondary' }}>
+                    Please verify all items received and sign above. Report any discrepancies immediately.
+                  </Typography>
+                </Box>
 
                 {/* Dispatch Summary - Shows confirmation details */}
                 {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && orderModal.dispatchInfo && Object.values(orderModal.customQty).some(qty => qty > 0) && (() => {
