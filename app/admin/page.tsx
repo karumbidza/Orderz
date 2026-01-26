@@ -497,7 +497,7 @@ export default function AdminPage() {
       if (data.success) {
         showMessage(data.message, 'success');
         setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false, customQty: {} });
-        setOrderModal({ open: false, order: null, loading: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
         loadOrders();
       } else {
         showMessage('Error: ' + data.error, 'error');
