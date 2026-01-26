@@ -596,15 +596,17 @@ export default function AdminPage() {
         } else showMessage('Error: ' + data.error, 'error');
       } else if (stockViewModal.action === 'remove') {
         // Use stock-movements API for removals with reason codes
+        // Send positive quantity - trigger handles the sign based on movement_type
+        const movementType = stockViewModal.reason === 'RETURN_TO_SUPPLIER' ? 'OUT' : 
+                             stockViewModal.reason === 'DAMAGED' ? 'DAMAGE' : 'OUT';
         const res = await fetch('/api/admin/stock-movements', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             item_id: stockViewModal.item.item_id, 
             warehouse_id: 2, 
-            quantity: -qty,
-            movement_type: stockViewModal.reason === 'RETURN_TO_SUPPLIER' ? 'RETURN' : 
-                           stockViewModal.reason === 'DAMAGED' ? 'DAMAGE' : 'ADJUSTMENT',
+            quantity: qty,  // Positive - trigger handles the deduction
+            movement_type: movementType,
             reason: stockViewModal.reason,
             created_by: userEmail
           }),
