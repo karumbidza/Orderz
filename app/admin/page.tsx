@@ -331,6 +331,7 @@ export default function AdminPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [movementCategories, setMovementCategories] = useState<string[]>([]);
   
   // Date filter for reports (global)
   const [dateFrom, setDateFrom] = useState<string>('');
@@ -366,9 +367,21 @@ export default function AdminPage() {
   const loadStockHistory = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/stock/history?limit=100&days=30');
+      const params = new URLSearchParams();
+      params.append('limit', '500');
+      if (dateFrom) params.append('dateFrom', dateFrom);
+      if (dateTo) params.append('dateTo', dateTo);
+      if (categoryFilter !== 'all') params.append('category', categoryFilter);
+      if (typeFilter !== 'all') params.append('type', typeFilter);
+      const res = await fetch(`/api/admin/stock/history?${params.toString()}`);
       const data = await res.json();
-      if (data.success) setStockHistory(data.data);
+      if (data.success) {
+        setStockHistory(data.data);
+        // Store available categories if returned
+        if (data.categories) {
+          setMovementCategories(data.categories);
+        }
+      }
       else showMessage('Error: ' + data.error, 'error');
     } catch {
       showMessage('Failed to load stock history', 'error');
@@ -982,13 +995,15 @@ export default function AdminPage() {
     return matchesSearch && matchesCategory;
   });
 
+  // filteredHistory - API now handles category/type/date filtering, just do search here
   const filteredHistory = stockHistory.filter(movement => {
     const matchesSearch = searchQuery === '' ||
       movement.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
       movement.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (movement.site_name && movement.site_name.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesType = typeFilter === 'all' || movement.movement_type === typeFilter;
-    return matchesSearch && matchesType;
+      (movement.reason && movement.reason.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (movement.site_name && movement.site_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (movement.order_number && movement.order_number.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesSearch;
   });
 
   const filteredSites = sites.filter(site => {
@@ -1100,30 +1115,47 @@ export default function AdminPage() {
       <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
     )},
     { field: 'product', headerName: 'Product', flex: 1, minWidth: 160, renderCell: (params) => (
-      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
+      <Box>
+        <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
+        <Typography variant="caption" color="text.secondary">{params.row.category}</Typography>
+      </Box>
     )},
-    { field: 'movement_type', headerName: 'Type', width: 100, renderCell: (params) => (
-      <Chip
-        icon={params.value === 'IN' ? <InIcon /> : <OutIcon />}
-        label={params.value}
-        color={params.value === 'IN' ? 'success' : 'warning'}
-        size="small"
-      />
-    )},
-    { field: 'quantity', headerName: 'Qty', width: 90, align: 'right', headerAlign: 'right', renderCell: (params) => (
-      <Typography variant="body2" fontWeight={600} color={params.row.movement_type === 'IN' ? 'success.main' : 'warning.main'}>
-        {params.row.movement_type === 'IN' ? '+' : '−'}{Math.abs(params.value)}
-      </Typography>
-    )},
+    { field: 'movement_type', headerName: 'Type', width: 110, renderCell: (params) => {
+      const typeConfig: Record<string, { icon: typeof InIcon; color: 'success' | 'warning' | 'error' | 'info'; label: string }> = {
+        'IN': { icon: InIcon, color: 'success', label: 'IN' },
+        'OUT': { icon: OutIcon, color: 'warning', label: 'OUT' },
+        'DAMAGE': { icon: OutIcon, color: 'error', label: 'DAM...' },
+        'ADJUSTMENT': { icon: InIcon, color: 'info', label: 'ADJ...' },
+      };
+      const config = typeConfig[params.value] || typeConfig['OUT'];
+      const IconComponent = config.icon;
+      return (
+        <Chip
+          icon={<IconComponent />}
+          label={config.label}
+          color={config.color}
+          size="small"
+        />
+      );
+    }},
+    { field: 'quantity', headerName: 'Qty', width: 90, align: 'right', headerAlign: 'right', renderCell: (params) => {
+      const isPositive = params.row.movement_type === 'IN' || (params.row.movement_type === 'ADJUSTMENT' && params.value > 0);
+      return (
+        <Typography variant="body2" fontWeight={600} color={isPositive ? 'success.main' : 'error.main'}>
+          {isPositive ? '+' : '−'}{Math.abs(params.value)}
+        </Typography>
+      );
+    }},
     { field: 'site_name', headerName: 'Destination', width: 160, renderCell: (params) => params.value ? (
       <Box>
         <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
-        {params.row.order_number && <Typography variant="caption" color="text.secondary">Order #{params.row.order_number}</Typography>}
+        {params.row.order_number && <Typography variant="caption" color="text.secondary">{params.row.order_number}</Typography>}
       </Box>
     ) : <Typography variant="caption" color="text.secondary">—</Typography>},
     { field: 'stock_value', headerName: 'Value', width: 110, align: 'right', headerAlign: 'right', renderCell: (params) => {
       const value = params.value ? parseFloat(params.value) : Math.abs(params.row.quantity) * parseFloat(params.row.cost || 0);
-      return <Typography variant="body2" fontWeight={500} color={params.row.movement_type === 'IN' ? 'success.main' : 'warning.main'}>${value.toFixed(2)}</Typography>;
+      const isPositive = params.row.movement_type === 'IN' || (params.row.movement_type === 'ADJUSTMENT' && params.row.quantity > 0);
+      return <Typography variant="body2" fontWeight={500} color={isPositive ? 'success.main' : 'error.main'}>${value.toFixed(2)}</Typography>;
     }},
     { field: 'reason', headerName: 'Reference', flex: 1, minWidth: 150, renderCell: (params) => (
       <Tooltip title={params.value}>
@@ -1411,19 +1443,37 @@ export default function AdminPage() {
                     <option value="site-analysis">Site Analysis</option>
                   </TextField>
                   {reportView === 'movements' && (
-                    <TextField
-                      select
-                      size="small"
-                      label="Type"
-                      value={typeFilter}
-                      onChange={(e) => setTypeFilter(e.target.value)}
-                      SelectProps={{ native: true }}
-                      sx={{ minWidth: 120 }}
-                    >
-                      <option value="all">All</option>
-                      <option value="IN">Stock In</option>
-                      <option value="OUT">Stock Out</option>
-                    </TextField>
+                    <>
+                      <TextField
+                        select
+                        size="small"
+                        label="Category"
+                        value={categoryFilter}
+                        onChange={(e) => setCategoryFilter(e.target.value)}
+                        SelectProps={{ native: true }}
+                        sx={{ minWidth: 130 }}
+                      >
+                        <option value="all">All Categories</option>
+                        {movementCategories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </TextField>
+                      <TextField
+                        select
+                        size="small"
+                        label="Type"
+                        value={typeFilter}
+                        onChange={(e) => setTypeFilter(e.target.value)}
+                        SelectProps={{ native: true }}
+                        sx={{ minWidth: 130 }}
+                      >
+                        <option value="all">All Types</option>
+                        <option value="IN">📥 Stock In</option>
+                        <option value="OUT">📤 Stock Out (Orders)</option>
+                        <option value="DAMAGE">⚠️ Damage</option>
+                        <option value="ADJUSTMENT">🔄 Adjustment</option>
+                      </TextField>
+                    </>
                   )}
                   <TextField
                     type="date"
