@@ -266,10 +266,20 @@ export default function AdminPage() {
   });
 
   // Modals
-  const [orderModal, setOrderModal] = useState<{ open: boolean; order: OrderDetail | null; loading: boolean }>({
+  const [orderModal, setOrderModal] = useState<{ 
+    open: boolean; 
+    order: OrderDetail | null; 
+    loading: boolean;
+    dispatchInfo: DispatchInfo | null;
+    customQty: Record<number, number>;
+    dispatching: boolean;
+  }>({
     open: false,
     order: null,
     loading: false,
+    dispatchInfo: null,
+    customQty: {},
+    dispatching: false,
   });
   const [dispatchModal, setDispatchModal] = useState<{
     open: boolean;
@@ -400,18 +410,42 @@ export default function AdminPage() {
   // ORDERS API
   // ─────────────────────────────────────────
   const viewOrder = async (orderId: number) => {
-    setOrderModal({ open: true, order: null, loading: true });
+    setOrderModal({ open: true, order: null, loading: true, dispatchInfo: null, customQty: {}, dispatching: false });
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}`);
-      const data = await res.json();
-      if (data.success) setOrderModal({ open: true, order: data.data, loading: false });
-      else {
+      // Load order details and dispatch info in parallel
+      const [orderRes, dispatchRes] = await Promise.all([
+        fetch(`/api/admin/orders/${orderId}`),
+        fetch(`/api/admin/orders/${orderId}/dispatch`)
+      ]);
+      const orderData = await orderRes.json();
+      const dispatchData = await dispatchRes.json();
+      
+      if (orderData.success) {
+        // Initialize custom quantities from dispatch info
+        const initialQty: Record<number, number> = {};
+        if (dispatchData.success) {
+          for (const item of dispatchData.data.items) {
+            const remaining = item.qty_requested - item.qty_dispatched;
+            if (remaining > 0) {
+              initialQty[item.id] = Math.min(remaining, item.stock_available);
+            }
+          }
+        }
+        setOrderModal({ 
+          open: true, 
+          order: orderData.data, 
+          loading: false,
+          dispatchInfo: dispatchData.success ? dispatchData.data : null,
+          customQty: initialQty,
+          dispatching: false
+        });
+      } else {
         showMessage('Error loading order details', 'error');
-        setOrderModal({ open: false, order: null, loading: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
       }
     } catch {
       showMessage('Failed to load order', 'error');
-      setOrderModal({ open: false, order: null, loading: false });
+      setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
     }
   };
 
@@ -486,11 +520,43 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success) {
         showMessage('Order declined', 'success');
-        setOrderModal({ open: false, order: null, loading: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
         loadOrders();
       } else showMessage('Error: ' + data.error, 'error');
     } catch {
       showMessage('Failed to decline order', 'error');
+    }
+  };
+
+  const handleOrderModalDispatch = async () => {
+    if (!orderModal.order) return;
+    setOrderModal({ ...orderModal, dispatching: true });
+    
+    const items = Object.entries(orderModal.customQty)
+      .filter(([, qty]) => qty > 0)
+      .map(([id, qty]) => ({
+        order_item_id: parseInt(id),
+        qty_to_dispatch: qty
+      }));
+    
+    try {
+      const res = await fetch(`/api/admin/orders/${orderModal.order.id}/dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force_partial: true, items }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage(data.message, 'success');
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
+        loadOrders();
+      } else {
+        showMessage('Error: ' + data.error, 'error');
+        setOrderModal({ ...orderModal, dispatching: false });
+      }
+    } catch {
+      showMessage('Failed to dispatch', 'error');
+      setOrderModal({ ...orderModal, dispatching: false });
     }
   };
 
@@ -1644,7 +1710,7 @@ export default function AdminPage() {
         </Dialog>
 
         {/* Order View Modal */}
-        <Dialog open={orderModal.open} onClose={() => setOrderModal({ open: false, order: null, loading: false })} maxWidth="md" fullWidth>
+        <Dialog open={orderModal.open} onClose={() => setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false })} maxWidth="lg" fullWidth>
           {orderModal.loading ? (
             <Box sx={{ p: 8, textAlign: 'center' }} className="no-print">
               <CircularProgress />
@@ -1654,7 +1720,7 @@ export default function AdminPage() {
             <>
               <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="no-print">
                 <span>Order {orderModal.order.order_number}</span>
-                <IconButton onClick={() => setOrderModal({ open: false, order: null, loading: false })}>
+                <IconButton onClick={() => setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false })}>
                   <CloseIcon />
                 </IconButton>
               </DialogTitle>
@@ -1697,6 +1763,36 @@ export default function AdminPage() {
                   )}
                 </Box>
 
+                {/* Stock Summary Cards - only show for pending/partial orders */}
+                {orderModal.dispatchInfo && ['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && (
+                  <Stack direction="row" spacing={2} sx={{ mb: 2 }} className="no-print">
+                    <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'success.50' }}>
+                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                        <Typography variant="h5" color="success.main">{orderModal.dispatchInfo.summary.ready}</Typography>
+                        <Typography variant="caption">Ready</Typography>
+                      </CardContent>
+                    </Card>
+                    <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'warning.50' }}>
+                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                        <Typography variant="h5" color="warning.main">{orderModal.dispatchInfo.summary.partial}</Typography>
+                        <Typography variant="caption">Partial</Typography>
+                      </CardContent>
+                    </Card>
+                    <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'error.50' }}>
+                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                        <Typography variant="h5" color="error.main">{orderModal.dispatchInfo.summary.unavailable}</Typography>
+                        <Typography variant="caption">No Stock</Typography>
+                      </CardContent>
+                    </Card>
+                    <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'grey.100' }}>
+                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                        <Typography variant="h5" color="text.secondary">{orderModal.dispatchInfo.summary.fulfilled}</Typography>
+                        <Typography variant="caption">Already Sent</Typography>
+                      </CardContent>
+                    </Card>
+                  </Stack>
+                )}
+
                 {/* Dispatch Status Banner */}
                 {orderModal.order.status === 'DISPATCHED' && (
                   <Box sx={{ mb: 2, p: 1.5, bgcolor: 'success.50', borderRadius: 1, border: '1px solid', borderColor: 'success.main' }}>
@@ -1706,14 +1802,14 @@ export default function AdminPage() {
                   </Box>
                 )}
                 {orderModal.order.status === 'PARTIAL_DISPATCH' && (
-                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.main' }}>
+                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.main' }} className="no-print">
                     <Typography variant="body2" color="warning.dark" sx={{ fontWeight: 600 }}>
-                      ⚠ Partially Dispatched - Some items pending. Dispatch remaining when stock is available.
+                      ⚠ Partially Dispatched - Adjust quantities below and dispatch remaining items.
                     </Typography>
                   </Box>
                 )}
 
-                {/* Items Table */}
+                {/* Items Table with Stock Info */}
                 <Paper variant="outlined">
                   <Box component="table" sx={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                     <Box component="thead" sx={{ bgcolor: 'grey.100' }}>
@@ -1721,14 +1817,90 @@ export default function AdminPage() {
                         <Box component="th" sx={{ p: 1.5, textAlign: 'left', borderBottom: '2px solid #006633' }}>Item</Box>
                         <Box component="th" sx={{ p: 1.5, textAlign: 'left', borderBottom: '2px solid #006633' }}>SKU</Box>
                         <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 60 }}>Qty</Box>
+                        <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 60 }} className="no-print">Stock</Box>
                         <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 70 }}>Sent</Box>
                         <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 70 }}>Pending</Box>
+                        {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && orderModal.dispatchInfo && (
+                          <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 90 }} className="no-print">Dispatch</Box>
+                        )}
                         <Box component="th" sx={{ p: 1.5, textAlign: 'right', borderBottom: '2px solid #006633', width: 80 }}>Unit $</Box>
                         <Box component="th" sx={{ p: 1.5, textAlign: 'right', borderBottom: '2px solid #006633', width: 80 }}>Total $</Box>
                       </Box>
                     </Box>
                     <Box component="tbody">
-                      {orderModal.order.items?.map((item, idx) => {
+                      {orderModal.dispatchInfo ? orderModal.dispatchInfo.items.map((item: any) => {
+                        const dispatched = item.qty_dispatched || 0;
+                        const remaining = item.qty_requested - dispatched;
+                        const stockAvailable = item.stock_available || 0;
+                        const maxDispatch = Math.min(remaining, stockAvailable);
+                        const currentQty = orderModal.customQty[item.id] ?? 0;
+                        const orderItem = orderModal.order?.items?.find((oi) => oi.sku === item.sku);
+                        
+                        return (
+                          <Box component="tr" key={item.id} sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: remaining > 0 ? (stockAvailable >= remaining ? 'success.50' : stockAvailable > 0 ? 'warning.50' : 'error.50') : 'transparent' }}>
+                            <Box component="td" sx={{ p: 1.5 }}>
+                              <Typography variant="body2" fontWeight={500} sx={{ fontSize: 13 }}>{item.item_name}</Typography>
+                              {item.size && <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Size: {item.size}</Typography>}
+                            </Box>
+                            <Box component="td" sx={{ p: 1.5, fontFamily: 'monospace', fontSize: 11 }}>{item.sku}</Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'center', fontWeight: 500 }}>{item.qty_requested}</Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }} className="no-print">
+                              <Typography 
+                                variant="body2" 
+                                sx={{ 
+                                  fontWeight: 600, 
+                                  color: stockAvailable >= remaining ? 'success.main' : stockAvailable > 0 ? 'warning.main' : 'error.main',
+                                  fontSize: 13 
+                                }}
+                              >
+                                {stockAvailable}
+                              </Typography>
+                            </Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
+                              {dispatched > 0 ? (
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: dispatched >= item.qty_requested ? 'success.main' : 'primary.main', fontSize: 13 }}>
+                                  {dispatched >= item.qty_requested ? `✓${dispatched}` : dispatched}
+                                </Typography>
+                              ) : (
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>0</Typography>
+                              )}
+                            </Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
+                              {remaining > 0 ? (
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.dark', fontSize: 13 }}>{remaining}</Typography>
+                              ) : (
+                                <Typography variant="body2" color="success.main" sx={{ fontSize: 13 }}>✓</Typography>
+                              )}
+                            </Box>
+                            {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order?.status || '') && orderModal.dispatchInfo && (
+                              <Box component="td" sx={{ p: 1, textAlign: 'center' }} className="no-print">
+                                {remaining === 0 ? (
+                                  <Typography variant="caption" color="success.main">Done</Typography>
+                                ) : stockAvailable > 0 ? (
+                                  <TextField
+                                    type="number"
+                                    size="small"
+                                    value={currentQty}
+                                    onChange={(e) => {
+                                      const val = Math.max(0, Math.min(maxDispatch, parseInt(e.target.value) || 0));
+                                      setOrderModal({
+                                        ...orderModal,
+                                        customQty: { ...orderModal.customQty, [item.id]: val }
+                                      });
+                                    }}
+                                    inputProps={{ min: 0, max: maxDispatch, style: { textAlign: 'center', width: 40, padding: '6px' } }}
+                                    sx={{ width: 70 }}
+                                  />
+                                ) : (
+                                  <Typography variant="caption" color="error.main">No stock</Typography>
+                                )}
+                              </Box>
+                            )}
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontSize: 13 }}>${parseFloat(orderItem?.unit_cost || '0').toFixed(2)}</Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontWeight: 600, fontSize: 13 }}>${parseFloat(orderItem?.total_cost || '0').toFixed(2)}</Box>
+                          </Box>
+                        );
+                      }) : orderModal.order.items?.map((item, idx) => {
                         const dispatched = item.qty_dispatched || 0;
                         const remaining = item.quantity - dispatched;
                         return (
@@ -1739,6 +1911,9 @@ export default function AdminPage() {
                             </Box>
                             <Box component="td" sx={{ p: 1.5, fontFamily: 'monospace', fontSize: 11 }}>{item.sku}</Box>
                             <Box component="td" sx={{ p: 1.5, textAlign: 'center', fontWeight: 500 }}>{item.quantity}</Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }} className="no-print">
+                              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>-</Typography>
+                            </Box>
                             <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
                               {dispatched > 0 ? (
                                 <Typography variant="body2" sx={{ fontWeight: 600, color: dispatched >= item.quantity ? 'success.main' : 'primary.main', fontSize: 13 }}>
@@ -1763,12 +1938,22 @@ export default function AdminPage() {
                     </Box>
                     <Box component="tfoot" sx={{ bgcolor: 'grey.100' }}>
                       <Box component="tr">
-                        <Box component="td" colSpan={6} sx={{ p: 1.5, textAlign: 'right', fontWeight: 600, borderTop: '2px solid #006633' }}>Total Amount:</Box>
+                        <Box component="td" colSpan={['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && orderModal.dispatchInfo ? 8 : 7} sx={{ p: 1.5, textAlign: 'right', fontWeight: 600, borderTop: '2px solid #006633' }}>Total Amount:</Box>
                         <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontWeight: 700, fontSize: 16, borderTop: '2px solid #006633' }}>${parseFloat(orderModal.order.total_amount).toFixed(2)}</Box>
                       </Box>
                     </Box>
                   </Box>
                 </Paper>
+
+                {/* Dispatch Summary */}
+                {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && orderModal.dispatchInfo && Object.values(orderModal.customQty).some(qty => qty > 0) && (
+                  <Box sx={{ mt: 2, p: 2, bgcolor: 'success.50', borderRadius: 1, border: '1px solid', borderColor: 'success.main' }} className="no-print">
+                    <Typography variant="body2" fontWeight={600}>
+                      Ready to dispatch: {Object.values(orderModal.customQty).reduce((sum, qty) => sum + qty, 0)} items 
+                      from {Object.values(orderModal.customQty).filter(qty => qty > 0).length} line(s)
+                    </Typography>
+                  </Box>
+                )}
               </DialogContent>
               <DialogActions sx={{ px: 3, py: 2 }} className="no-print">
                 {orderModal.order.status === 'PENDING' && (
@@ -1779,14 +1964,15 @@ export default function AdminPage() {
                     Decline
                   </Button>
                 )}
-                {orderModal.order.status === 'PENDING' && (
-                  <Button variant="contained" color="success" startIcon={<DispatchIcon />} onClick={() => openDispatchModal(orderModal.order!.id)}>
-                    Dispatch
-                  </Button>
-                )}
-                {orderModal.order.status === 'PARTIAL_DISPATCH' && (
-                  <Button variant="contained" color="warning" startIcon={<DispatchIcon />} onClick={() => openDispatchModal(orderModal.order!.id)}>
-                    Dispatch Remaining
+                {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && Object.values(orderModal.customQty).some(qty => qty > 0) && (
+                  <Button 
+                    variant="contained" 
+                    color="success" 
+                    startIcon={orderModal.dispatching ? <CircularProgress size={16} color="inherit" /> : <DispatchIcon />}
+                    onClick={handleOrderModalDispatch}
+                    disabled={orderModal.dispatching}
+                  >
+                    {orderModal.dispatching ? 'Dispatching...' : `Dispatch ${Object.values(orderModal.customQty).reduce((sum, qty) => sum + qty, 0)} Items`}
                   </Button>
                 )}
                 {orderModal.order.status === 'DISPATCHED' && (
