@@ -236,26 +236,10 @@ export async function POST(request: NextRequest) {
            'TRANSFER', ${movement[0].id.toString()}, ${`Transfer from warehouse ${warehouse_id}`}, ${created_by || 'Admin'}, NOW())
       `;
 
-      // Update destination stock
-      await sql`
-        INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
-        VALUES (${item_id}, ${to_warehouse_id}, ${Math.abs(quantity)}, NOW())
-        ON CONFLICT (item_id, warehouse_id) 
-        DO UPDATE SET 
-          quantity_on_hand = stock_levels.quantity_on_hand + ${Math.abs(quantity)},
-          last_updated = NOW()
-      `;
+      // Stock level for destination is automatically updated by database trigger
     }
 
-    // Update stock level
-    await sql`
-      INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
-      VALUES (${item_id}, ${warehouse_id}, ${adjustedQuantity}, NOW())
-      ON CONFLICT (item_id, warehouse_id) 
-      DO UPDATE SET 
-        quantity_on_hand = stock_levels.quantity_on_hand + ${adjustedQuantity},
-        last_updated = NOW()
-    `;
+    // Stock level is automatically updated by database trigger (trg_update_stock_after_movement)
 
     // Get updated stock level
     const stockLevel = await sql`

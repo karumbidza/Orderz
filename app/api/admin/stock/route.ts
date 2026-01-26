@@ -106,15 +106,7 @@ export async function POST(request: NextRequest) {
       RETURNING id, item_id, quantity
     `;
 
-    // Update or insert stock level
-    await sql`
-      INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
-      VALUES (${item_id}, ${warehouse_id}, ${quantity}, NOW())
-      ON CONFLICT (item_id, warehouse_id) 
-      DO UPDATE SET 
-        quantity_on_hand = stock_levels.quantity_on_hand + ${quantity},
-        last_updated = NOW()
-    `;
+    // Stock level is automatically updated by database trigger (trg_update_stock_after_movement)
 
     // Get updated stock level
     const stockLevel = await sql`
@@ -216,13 +208,7 @@ export async function PATCH(request: NextRequest) {
       RETURNING id, item_id, quantity
     `;
 
-    // Update stock level
-    await sql`
-      UPDATE stock_levels 
-      SET quantity_on_hand = quantity_on_hand + ${adjustedQuantity}, 
-          last_updated = NOW()
-      WHERE item_id = ${item_id} AND warehouse_id = ${warehouse_id}
-    `;
+    // Stock level is automatically updated by database trigger (trg_update_stock_after_movement)
 
     // Get updated stock level
     const stockLevel = await sql`

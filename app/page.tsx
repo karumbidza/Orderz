@@ -13,7 +13,7 @@ export default function RootPage() {
       <main className="flex-1 flex items-center justify-center px-4">
         <div className="w-full max-w-md">
           {/* Logo */}
-          <div className="text-center mb-10">
+          <div className="text-center mb-16">
             <h1 className="text-5xl font-bold text-white tracking-tight">
               Redan
             </h1>
