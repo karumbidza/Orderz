@@ -1233,14 +1233,14 @@ export default function AdminPage() {
                 </Box>
                 
                 {/* Order Info */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3, mb: 3 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 2 }}>
                   <Box>
                     <Typography variant="caption" color="text.secondary">Site</Typography>
                     <Typography variant="body1" fontWeight={500}>{orderModal.order.site_name}</Typography>
                     <Typography variant="body2" color="text.secondary">{orderModal.order.city}</Typography>
                   </Box>
                   <Box>
-                    <Typography variant="caption" color="text.secondary">Date</Typography>
+                    <Typography variant="caption" color="text.secondary">Order Date</Typography>
                     <Typography variant="body1">{new Date(orderModal.order.created_at).toLocaleDateString()}</Typography>
                   </Box>
                   <Box>
@@ -1249,7 +1249,29 @@ export default function AdminPage() {
                       <Chip label={orderModal.order.status} color={STATUS_COLORS[orderModal.order.status] || 'default'} size="small" />
                     </Box>
                   </Box>
+                  {orderModal.order.dispatched_at && (
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Dispatched</Typography>
+                      <Typography variant="body1">{new Date(orderModal.order.dispatched_at).toLocaleDateString()}</Typography>
+                    </Box>
+                  )}
                 </Box>
+
+                {/* Dispatch Status Banner */}
+                {orderModal.order.status === 'DISPATCHED' && (
+                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'success.50', borderRadius: 1, border: '1px solid', borderColor: 'success.main' }}>
+                    <Typography variant="body2" color="success.dark" sx={{ fontWeight: 600 }}>
+                      ✓ Fully Dispatched {orderModal.order.dispatched_at && `on ${new Date(orderModal.order.dispatched_at).toLocaleDateString()}`}
+                    </Typography>
+                  </Box>
+                )}
+                {orderModal.order.status === 'PARTIAL_DISPATCH' && (
+                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.main' }}>
+                    <Typography variant="body2" color="warning.dark" sx={{ fontWeight: 600 }}>
+                      ⚠ Partially Dispatched - Some items pending. Dispatch remaining when stock is available.
+                    </Typography>
+                  </Box>
+                )}
 
                 {/* Items Table */}
                 <Paper variant="outlined">
@@ -1309,18 +1331,26 @@ export default function AdminPage() {
                 </Paper>
               </DialogContent>
               <DialogActions sx={{ px: 3, py: 2 }} className="no-print">
-                {(orderModal.order.status === 'PENDING' || orderModal.order.status === 'PARTIAL_DISPATCH') && (
-                  <>
-                    <Button color="error" onClick={() => {
-                      const reason = prompt('Reason for declining this order:');
-                      if (reason) handleDecline(reason);
-                    }}>
-                      Decline
-                    </Button>
-                    <Button variant="contained" color="success" startIcon={<DispatchIcon />} onClick={() => openDispatchModal(orderModal.order!.id)}>
-                      Dispatch
-                    </Button>
-                  </>
+                {orderModal.order.status === 'PENDING' && (
+                  <Button color="error" onClick={() => {
+                    const reason = prompt('Reason for declining this order:');
+                    if (reason) handleDecline(reason);
+                  }}>
+                    Decline
+                  </Button>
+                )}
+                {orderModal.order.status === 'PENDING' && (
+                  <Button variant="contained" color="success" startIcon={<DispatchIcon />} onClick={() => openDispatchModal(orderModal.order!.id)}>
+                    Dispatch
+                  </Button>
+                )}
+                {orderModal.order.status === 'PARTIAL_DISPATCH' && (
+                  <Button variant="contained" color="warning" startIcon={<DispatchIcon />} onClick={() => openDispatchModal(orderModal.order!.id)}>
+                    Dispatch Remaining
+                  </Button>
+                )}
+                {orderModal.order.status === 'DISPATCHED' && (
+                  <Chip label="Fully Dispatched" color="success" size="small" sx={{ mr: 1 }} />
                 )}
                 <Button startIcon={<PrintIcon />} onClick={() => window.print()}>Print</Button>
               </DialogActions>
