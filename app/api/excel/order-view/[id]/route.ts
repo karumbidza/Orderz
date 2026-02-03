@@ -187,7 +187,8 @@ export async function GET(
         <th>Item</th>
         <th>SKU</th>
         <th>Size</th>
-        <th>Ordered</th>
+        <th>Requested</th>
+        <th>Approved</th>
         <th>Dispatched</th>
         <th>Pending</th>
         <th>Unit Cost</th>
@@ -196,25 +197,30 @@ export async function GET(
     </thead>
     <tbody>
       ${items.map((item: any, index: number) => {
+        const requested = item.qty_requested || 0;
+        const approved = item.qty_approved !== null ? item.qty_approved : requested;
         const dispatched = item.qty_dispatched || 0;
-        const pending = item.qty_requested - dispatched;
-        const isComplete = pending === 0;
+        const pending = approved - dispatched;
+        const isComplete = pending === 0 && dispatched > 0;
+        const wasAdjusted = item.qty_approved !== null && item.qty_approved !== requested;
+        const lineTotal = approved * parseFloat(item.unit_cost);
         return `
-        <tr class="${isComplete ? 'complete-row' : pending > 0 ? 'pending-row' : ''}">
+        <tr class="${isComplete ? 'complete-row' : wasAdjusted ? 'adjusted-row' : pending > 0 ? 'pending-row' : ''}">
           <td>${index + 1}</td>
           <td>${item.item_name}</td>
           <td>${item.sku}</td>
           <td>${item.size || '-'}</td>
-          <td style="text-align: center;">${item.qty_requested}</td>
+          <td style="text-align: center; ${wasAdjusted ? 'text-decoration: line-through; color: #999;' : ''}">${requested}</td>
+          <td style="text-align: center; font-weight: bold; ${wasAdjusted ? 'color: #1565c0;' : ''}">${wasAdjusted ? approved : '-'}</td>
           <td style="text-align: center; font-weight: bold; color: ${dispatched > 0 ? '#2e7d32' : '#999'};">${dispatched > 0 ? dispatched : '-'}</td>
-          <td style="text-align: center; font-weight: bold; color: ${pending > 0 ? '#e65100' : '#2e7d32'};">${pending > 0 ? pending : '✓'}</td>
+          <td style="text-align: center; font-weight: bold; color: ${pending > 0 ? '#e65100' : '#2e7d32'};">${pending > 0 ? pending : (dispatched > 0 ? '✓' : '-')}</td>
           <td>$${parseFloat(item.unit_cost).toFixed(2)}</td>
-          <td>$${parseFloat(item.line_total).toFixed(2)}</td>
+          <td>$${lineTotal.toFixed(2)}</td>
         </tr>
         `;
       }).join('')}
       <tr class="total-row">
-        <td colspan="8" style="text-align: right;">TOTAL:</td>
+        <td colspan="9" style="text-align: right;">TOTAL:</td>
         <td>$${parseFloat(order.total_amount).toFixed(2)}</td>
       </tr>
     </tbody>
