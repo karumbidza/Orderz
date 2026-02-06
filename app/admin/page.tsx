@@ -318,6 +318,20 @@ export default function AdminPage() {
     isNew: boolean;
   }>({ open: false, site: null, isNew: false });
 
+  // Add Product Modal
+  const [addProductModal, setAddProductModal] = useState<{
+    open: boolean;
+    submitting: boolean;
+    product: string;
+    category: string;
+    sku: string;
+    role: string;
+    size: string;
+    unit: string;
+    cost: string;
+    initialQuantity: string;
+  }>({ open: false, submitting: false, product: '', category: '', sku: '', role: 'All', size: '', unit: 'unit', cost: '0', initialQuantity: '0' });
+
   // Site Ledger Modal
   const [siteLedgerModal, setSiteLedgerModal] = useState<{
     open: boolean;
@@ -832,6 +846,47 @@ export default function AdminPage() {
   };
 
   // ─────────────────────────────────────────
+  // ADD PRODUCT
+  // ─────────────────────────────────────────
+  const handleAddProduct = async () => {
+    if (!addProductModal.product || !addProductModal.category) {
+      showMessage('Product name and category are required', 'error');
+      return;
+    }
+
+    setAddProductModal({ ...addProductModal, submitting: true });
+    try {
+      const res = await fetch('/api/admin/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product: addProductModal.product,
+          category: addProductModal.category,
+          sku: addProductModal.sku || undefined,
+          role: addProductModal.role || 'All',
+          size: addProductModal.size || undefined,
+          unit: addProductModal.unit || 'unit',
+          cost: parseFloat(addProductModal.cost) || 0,
+          initial_quantity: parseInt(addProductModal.initialQuantity) || 0,
+          created_by: 'Admin',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage(`Product "${data.item.product}" added with SKU: ${data.item.sku}`, 'success');
+        setAddProductModal({ open: false, submitting: false, product: '', category: '', sku: '', role: 'All', size: '', unit: 'unit', cost: '0', initialQuantity: '0' });
+        loadStock(); // Refresh inventory
+      } else {
+        showMessage('Error: ' + data.error, 'error');
+        setAddProductModal({ ...addProductModal, submitting: false });
+      }
+    } catch {
+      showMessage('Failed to add product', 'error');
+      setAddProductModal({ ...addProductModal, submitting: false });
+    }
+  };
+
+  // ─────────────────────────────────────────
   // SITES MANAGEMENT
   // ─────────────────────────────────────────
   const openSiteModal = (site: Site | null, isNew: boolean = false) => {
@@ -1342,9 +1397,19 @@ export default function AdminPage() {
             </Box>
             <Stack direction="row" spacing={2}>
               {activeTab === 'inventory' && (
-                <Button variant="contained" startIcon={<AddIcon />} onClick={openBulkReceiveModal}>
-                  Bulk Receive
-                </Button>
+                <>
+                  <Button 
+                    variant="contained" 
+                    startIcon={<AddIcon />} 
+                    onClick={() => setAddProductModal({ open: true, submitting: false, product: '', category: '', sku: '', role: 'All', size: '', unit: 'unit', cost: '0', initialQuantity: '0' })}
+                    sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }}
+                  >
+                    Add Product
+                  </Button>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={openBulkReceiveModal}>
+                    Bulk Receive
+                  </Button>
+                </>
               )}
               {activeTab === 'sites' && (
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => openSiteModal(null, true)}>
@@ -1879,6 +1944,96 @@ export default function AdminPage() {
             <Button onClick={() => setBulkReceiveModal({ open: false, items: [], grnNumber: '', submitting: false })}>Cancel</Button>
             <Button variant="contained" onClick={handleBulkReceive} disabled={bulkReceiveModal.submitting}>
               {bulkReceiveModal.submitting ? 'Processing...' : 'Receive Stock'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Add Product Modal */}
+        <Dialog open={addProductModal.open} onClose={() => setAddProductModal({ ...addProductModal, open: false })} maxWidth="sm" fullWidth>
+          <DialogTitle>Add New Product</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Product Name *"
+                fullWidth
+                value={addProductModal.product}
+                onChange={(e) => setAddProductModal({ ...addProductModal, product: e.target.value })}
+                placeholder="e.g. Fire Extinguisher"
+              />
+              <TextField
+                label="Category *"
+                select
+                fullWidth
+                value={addProductModal.category}
+                onChange={(e) => setAddProductModal({ ...addProductModal, category: e.target.value })}
+                SelectProps={{ native: true }}
+              >
+                <option value="">Select Category</option>
+                <option value="PPE">PPE</option>
+                <option value="Uniforms">Uniforms</option>
+                <option value="Stationery">Stationery</option>
+                <option value="Consumable">Consumable</option>
+              </TextField>
+              <TextField
+                label="SKU (optional - auto-generated if blank)"
+                fullWidth
+                value={addProductModal.sku}
+                onChange={(e) => setAddProductModal({ ...addProductModal, sku: e.target.value.toUpperCase() })}
+                placeholder="e.g. PPE-FIRE-EXT"
+              />
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  label="Role"
+                  fullWidth
+                  value={addProductModal.role}
+                  onChange={(e) => setAddProductModal({ ...addProductModal, role: e.target.value })}
+                  placeholder="e.g. All, Forecourt, Cashier"
+                />
+                <TextField
+                  label="Size"
+                  fullWidth
+                  value={addProductModal.size}
+                  onChange={(e) => setAddProductModal({ ...addProductModal, size: e.target.value })}
+                  placeholder="e.g. M, L, XL"
+                />
+              </Stack>
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  label="Unit"
+                  fullWidth
+                  value={addProductModal.unit}
+                  onChange={(e) => setAddProductModal({ ...addProductModal, unit: e.target.value })}
+                  placeholder="e.g. unit, pair, roll"
+                />
+                <TextField
+                  label="Cost ($)"
+                  type="number"
+                  fullWidth
+                  value={addProductModal.cost}
+                  onChange={(e) => setAddProductModal({ ...addProductModal, cost: e.target.value })}
+                  inputProps={{ min: 0, step: 0.01 }}
+                />
+              </Stack>
+              <TextField
+                label="Initial Quantity"
+                type="number"
+                fullWidth
+                value={addProductModal.initialQuantity}
+                onChange={(e) => setAddProductModal({ ...addProductModal, initialQuantity: e.target.value })}
+                inputProps={{ min: 0 }}
+                helperText="Optional: Add initial stock quantity"
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddProductModal({ ...addProductModal, open: false })}>Cancel</Button>
+            <Button 
+              variant="contained" 
+              onClick={handleAddProduct} 
+              disabled={addProductModal.submitting || !addProductModal.product || !addProductModal.category}
+              sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }}
+            >
+              {addProductModal.submitting ? 'Adding...' : 'Add Product'}
             </Button>
           </DialogActions>
         </Dialog>
