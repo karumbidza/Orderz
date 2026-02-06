@@ -273,6 +273,9 @@ export default function AdminPage() {
     dispatchInfo: DispatchInfo | null;
     customQty: Record<number, number>;
     dispatching: boolean;
+    adjusting: boolean;
+    adjustments: Record<number, number>; // order_item_id -> qty_approved
+    savingAdjustments: boolean;
   }>({
     open: false,
     order: null,
@@ -280,6 +283,9 @@ export default function AdminPage() {
     dispatchInfo: null,
     customQty: {},
     dispatching: false,
+    adjusting: false,
+    adjustments: {},
+    savingAdjustments: false,
   });
   const [dispatchModal, setDispatchModal] = useState<{
     open: boolean;
@@ -498,7 +504,7 @@ export default function AdminPage() {
   // ORDERS API
   // ─────────────────────────────────────────
   const viewOrder = async (orderId: number) => {
-    setOrderModal({ open: true, order: null, loading: true, dispatchInfo: null, customQty: {}, dispatching: false });
+    setOrderModal({ open: true, order: null, loading: true, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
     try {
       // Load order details and dispatch info in parallel
       const [orderRes, dispatchRes] = await Promise.all([
@@ -529,11 +535,11 @@ export default function AdminPage() {
         });
       } else {
         showMessage('Error loading order details', 'error');
-        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
       }
     } catch {
       showMessage('Failed to load order', 'error');
-      setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
+      setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
     }
   };
 
@@ -585,7 +591,7 @@ export default function AdminPage() {
       if (data.success) {
         showMessage(data.message, 'success');
         setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false, customQty: {} });
-        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
         loadOrders();
       } else {
         showMessage('Error: ' + data.error, 'error');
@@ -608,7 +614,7 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success) {
         showMessage('Order declined', 'success');
-        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
         loadOrders();
       } else showMessage('Error: ' + data.error, 'error');
     } catch {
@@ -636,7 +642,7 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success) {
         showMessage(data.message, 'success');
-        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
         loadOrders();
       } else {
         showMessage('Error: ' + data.error, 'error');
@@ -645,6 +651,58 @@ export default function AdminPage() {
     } catch {
       showMessage('Failed to dispatch', 'error');
       setOrderModal({ ...orderModal, dispatching: false });
+    }
+  };
+
+  // ─────────────────────────────────────────
+  // ORDER ADJUSTMENT
+  // ─────────────────────────────────────────
+  const handleSaveAdjustments = async () => {
+    if (!orderModal.order) return;
+    
+    // Build adjustments array - only items that were changed
+    const adjustments = Object.entries(orderModal.adjustments)
+      .filter(([itemId, qtyApproved]) => {
+        const item = orderModal.dispatchInfo?.items.find((i: any) => i.id === parseInt(itemId));
+        // Only include if qty_approved is different from qty_requested
+        return item && qtyApproved !== item.qty_requested && qtyApproved < item.qty_requested;
+      })
+      .map(([itemId, qtyApproved]) => ({
+        order_item_id: parseInt(itemId),
+        qty_approved: qtyApproved,
+        reason: 'Adjusted by admin'
+      }));
+
+    if (adjustments.length === 0) {
+      showMessage('No adjustments to save', 'info');
+      setOrderModal({ ...orderModal, adjusting: false });
+      return;
+    }
+
+    setOrderModal({ ...orderModal, savingAdjustments: true });
+    try {
+      const res = await fetch(`/api/admin/orders/${orderModal.order.id}/adjust`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adjustments,
+          adjusted_by: 'Admin',
+          adjustment_reason: 'Order quantities adjusted before dispatch'
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage(`Adjusted ${adjustments.length} item(s). New total: $${data.new_total_amount?.toFixed(2) || ''}`, 'success');
+        setOrderModal({ ...orderModal, adjusting: false, adjustments: {}, savingAdjustments: false });
+        // Reload order to show updated values
+        viewOrder(orderModal.order.id);
+      } else {
+        showMessage('Error: ' + data.error, 'error');
+        setOrderModal({ ...orderModal, savingAdjustments: false });
+      }
+    } catch {
+      showMessage('Failed to save adjustments', 'error');
+      setOrderModal({ ...orderModal, savingAdjustments: false });
     }
   };
 
@@ -2037,7 +2095,7 @@ export default function AdminPage() {
         </Dialog>
 
         {/* Order View Modal */}
-        <Dialog open={orderModal.open} onClose={() => setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false })} maxWidth="lg" fullWidth>
+        <Dialog open={orderModal.open} onClose={() => setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false })} maxWidth="lg" fullWidth>
           {orderModal.loading ? (
             <Box sx={{ p: 8, textAlign: 'center' }} className="no-print">
               <CircularProgress />
@@ -2047,7 +2105,7 @@ export default function AdminPage() {
             <>
               <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="no-print">
                 <span>Order {orderModal.order.order_number}</span>
-                <IconButton onClick={() => setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false })}>
+                <IconButton onClick={() => setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false })}>
                   <CloseIcon />
                 </IconButton>
               </DialogTitle>
@@ -2161,6 +2219,15 @@ export default function AdminPage() {
                   </>
                 )}
 
+                {/* Adjustment Mode Banner */}
+                {orderModal.adjusting && (
+                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'info.50', borderRadius: 1, border: '1px solid', borderColor: 'info.main' }} className="no-print">
+                    <Typography variant="body2" color="info.dark" sx={{ fontWeight: 600 }}>
+                      ✏️ Adjustment Mode - Modify the "Approved" quantities below. Values less than ordered will be saved.
+                    </Typography>
+                  </Box>
+                )}
+
                 {/* Items Table - Simplified */}
                 <Paper variant="outlined">
                   <Box component="table" sx={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
@@ -2169,9 +2236,15 @@ export default function AdminPage() {
                         <Box component="th" sx={{ p: 1.5, textAlign: 'left', borderBottom: '2px solid #006633' }}>Item</Box>
                         <Box component="th" sx={{ p: 1.5, textAlign: 'left', borderBottom: '2px solid #006633', width: 90 }}>SKU</Box>
                         <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 70 }}>Ordered</Box>
+                        {/* Approved column - show when in adjustment mode or if any item has been adjusted */}
+                        {(orderModal.adjusting || orderModal.dispatchInfo?.items.some((i: any) => i.qty_approved !== null && i.qty_approved !== i.qty_requested)) && (
+                          <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 80, bgcolor: orderModal.adjusting ? 'info.100' : 'inherit' }} className="no-print">
+                            Approved
+                          </Box>
+                        )}
                         <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 80 }}>Dispatched</Box>
                         <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 70 }}>Pending</Box>
-                        {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && orderModal.dispatchInfo && (
+                        {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && orderModal.dispatchInfo && !orderModal.adjusting && (
                           <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 90 }} className="no-print">To Send</Box>
                         )}
                         <Box component="th" sx={{ p: 1.5, textAlign: 'right', borderBottom: '2px solid #006633', width: 70 }}>Unit $</Box>
@@ -2203,7 +2276,7 @@ export default function AdminPage() {
                               <Typography variant="body2" fontWeight={500} sx={{ fontSize: 13 }}>{item.item_name}</Typography>
                               {item.size && <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Size: {item.size}</Typography>}
                               {/* Stock hint - only visible on screen */}
-                              {remaining > 0 && (
+                              {remaining > 0 && !orderModal.adjusting && (
                                 <Typography variant="caption" className="no-print" sx={{ 
                                   display: 'block', 
                                   color: canFulfill ? 'success.main' : canPartial ? 'warning.main' : 'error.main',
@@ -2214,7 +2287,38 @@ export default function AdminPage() {
                               )}
                             </Box>
                             <Box component="td" sx={{ p: 1.5, fontFamily: 'monospace', fontSize: 10, color: 'text.secondary' }}>{item.sku}</Box>
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'center', fontWeight: 600 }}>{item.qty_requested}</Box>
+                            <Box component="td" sx={{ p: 1.5, textAlign: 'center', fontWeight: 600 }}>
+                              {item.qty_approved !== null && item.qty_approved !== item.qty_requested ? (
+                                <Typography variant="body2" sx={{ textDecoration: 'line-through', color: 'text.secondary', fontSize: 12 }}>{item.qty_requested}</Typography>
+                              ) : item.qty_requested}
+                            </Box>
+                            {/* Approved column */}
+                            {(orderModal.adjusting || orderModal.dispatchInfo?.items.some((i: any) => i.qty_approved !== null && i.qty_approved !== i.qty_requested)) && (
+                              <Box component="td" sx={{ p: 1, textAlign: 'center', bgcolor: orderModal.adjusting ? 'info.50' : 'transparent' }} className="no-print">
+                                {orderModal.adjusting ? (
+                                  <TextField
+                                    type="number"
+                                    size="small"
+                                    value={orderModal.adjustments[item.id] ?? item.qty_approved ?? item.qty_requested}
+                                    onChange={(e) => {
+                                      const val = Math.max(0, Math.min(item.qty_requested, parseInt(e.target.value) || 0));
+                                      setOrderModal({
+                                        ...orderModal,
+                                        adjustments: { ...orderModal.adjustments, [item.id]: val }
+                                      });
+                                    }}
+                                    inputProps={{ min: 0, max: item.qty_requested, style: { textAlign: 'center', width: 40, padding: '6px' } }}
+                                    sx={{ width: 70 }}
+                                  />
+                                ) : (
+                                  item.qty_approved !== null && item.qty_approved !== item.qty_requested ? (
+                                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'info.main', fontSize: 13 }}>{item.qty_approved}</Typography>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>-</Typography>
+                                  )
+                                )}
+                              </Box>
+                            )}
                             <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
                               {dispatched > 0 ? (
                                 <Typography variant="body2" sx={{ fontWeight: 600, color: isComplete ? 'success.main' : 'primary.main', fontSize: 13 }}>
@@ -2231,7 +2335,7 @@ export default function AdminPage() {
                                 <Typography variant="body2" color="success.main" sx={{ fontSize: 13 }}>✓</Typography>
                               )}
                             </Box>
-                            {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order?.status || '') && orderModal.dispatchInfo && (
+                            {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order?.status || '') && orderModal.dispatchInfo && !orderModal.adjusting && (
                               <Box component="td" sx={{ p: 1, textAlign: 'center' }} className="no-print">
                                 {isComplete ? (
                                   <Chip label="Complete" size="small" color="success" sx={{ fontSize: 10 }} />
@@ -2413,7 +2517,8 @@ export default function AdminPage() {
                 })()}
               </DialogContent>
               <DialogActions sx={{ px: 3, py: 2 }} className="no-print">
-                {orderModal.order.status === 'PENDING' && (
+                {/* Decline button - only for pending orders */}
+                {orderModal.order.status === 'PENDING' && !orderModal.adjusting && (
                   <Button color="error" onClick={() => {
                     const reason = prompt('Reason for declining this order:');
                     if (reason) handleDecline(reason);
@@ -2421,7 +2526,48 @@ export default function AdminPage() {
                     Decline
                   </Button>
                 )}
-                {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && Object.values(orderModal.customQty).some(qty => qty > 0) && (
+                
+                {/* Adjust Order button - only for pending orders, not yet dispatched */}
+                {orderModal.order.status === 'PENDING' && !orderModal.adjusting && (
+                  <Button 
+                    variant="outlined"
+                    color="info"
+                    startIcon={<EditIcon />}
+                    onClick={() => {
+                      // Initialize adjustments with current values
+                      const initialAdjustments: Record<number, number> = {};
+                      orderModal.dispatchInfo?.items.forEach((item: any) => {
+                        initialAdjustments[item.id] = item.qty_approved ?? item.qty_requested;
+                      });
+                      setOrderModal({ ...orderModal, adjusting: true, adjustments: initialAdjustments });
+                    }}
+                  >
+                    Adjust Order
+                  </Button>
+                )}
+                
+                {/* Cancel Adjustment button */}
+                {orderModal.adjusting && (
+                  <Button onClick={() => setOrderModal({ ...orderModal, adjusting: false, adjustments: {} })}>
+                    Cancel
+                  </Button>
+                )}
+                
+                {/* Save Adjustments button */}
+                {orderModal.adjusting && (
+                  <Button 
+                    variant="contained" 
+                    color="info"
+                    onClick={handleSaveAdjustments}
+                    disabled={orderModal.savingAdjustments}
+                    startIcon={orderModal.savingAdjustments ? <CircularProgress size={16} color="inherit" /> : null}
+                  >
+                    {orderModal.savingAdjustments ? 'Saving...' : 'Save Adjustments'}
+                  </Button>
+                )}
+                
+                {/* Dispatch button - only when not adjusting */}
+                {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && !orderModal.adjusting && Object.values(orderModal.customQty).some(qty => qty > 0) && (
                   <Button 
                     variant="contained" 
                     color="success" 
@@ -2435,7 +2581,7 @@ export default function AdminPage() {
                 {orderModal.order.status === 'DISPATCHED' && (
                   <Chip label="Fully Dispatched" color="success" size="small" sx={{ mr: 1 }} />
                 )}
-                <Button startIcon={<PrintIcon />} onClick={() => window.print()}>Print</Button>
+                {!orderModal.adjusting && <Button startIcon={<PrintIcon />} onClick={() => window.print()}>Print</Button>}
               </DialogActions>
             </>
           ) : null}
