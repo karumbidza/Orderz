@@ -1305,7 +1305,7 @@ export default function AdminPage() {
         {/* App Bar */}
         <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Container maxWidth="xl" disableGutters>
-            <Toolbar sx={{ px: { xs: 2, lg: 3 } }}>
+            <Toolbar sx={{ px: '24px' }}>
               <Typography variant="h6" sx={{ flexGrow: 1 }}>
                 Redan Coupon
               </Typography>
@@ -1324,7 +1324,7 @@ export default function AdminPage() {
           </Container>
         </AppBar>
 
-        <Container maxWidth="xl" sx={{ py: 3, px: { xs: 2, lg: 3 } }}>
+        <Container maxWidth="xl" sx={{ py: 3, px: '24px' }}>
           {/* Page Header */}
           <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box>
