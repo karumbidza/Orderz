@@ -1304,10 +1304,11 @@ export default function AdminPage() {
       <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }} className="no-print">
         {/* App Bar */}
         <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Toolbar>
-            <Typography variant="h6" sx={{ flexGrow: 1 }}>
-              Redan Coupon
-            </Typography>
+          <Container maxWidth="xl" disableGutters>
+            <Toolbar sx={{ px: { xs: 2, lg: 3 } }}>
+              <Typography variant="h6" sx={{ flexGrow: 1 }}>
+                Redan Coupon
+              </Typography>
             <IconButton onClick={() => {
               if (activeTab === 'orders') loadOrders();
               else if (activeTab === 'inventory') loadStock();
@@ -1319,10 +1320,11 @@ export default function AdminPage() {
             }}>
               <RefreshIcon />
             </IconButton>
-          </Toolbar>
+            </Toolbar>
+          </Container>
         </AppBar>
 
-        <Container maxWidth="xl" sx={{ py: 3 }}>
+        <Container maxWidth="xl" sx={{ py: 3, px: { xs: 2, lg: 3 } }}>
           {/* Page Header */}
           <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box>
