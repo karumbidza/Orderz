@@ -111,6 +111,19 @@ export async function GET(
     .adjustment-notice h4 { color: #1565c0; margin-bottom: 10px; }
     .adjustment-notice ul { margin: 10px 0 0 20px; }
     .footer { margin-top: 30px; text-align: center; color: #666; font-size: 11px; }
+    .receive-btn { padding: 10px 30px; background: #2196f3; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-left: 10px; }
+    .receive-btn:hover { background: #1976d2; }
+    .receive-btn:disabled { background: #ccc; cursor: not-allowed; }
+    .received-badge { display: inline-block; padding: 10px 30px; background: #4caf50; color: white; border-radius: 5px; font-size: 16px; margin-left: 10px; }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-content { background: white; padding: 30px; border-radius: 10px; max-width: 400px; width: 90%; }
+    .modal-content h3 { color: #1565c0; margin-bottom: 20px; }
+    .modal-content input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; margin-bottom: 20px; }
+    .modal-content .btn-row { display: flex; gap: 10px; justify-content: flex-end; }
+    .modal-content button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+    .modal-content .cancel-btn { background: #f5f5f5; color: #333; }
+    .modal-content .confirm-btn { background: #4caf50; color: white; }
+    .modal-content .confirm-btn:disabled { background: #ccc; }
     @media print {
       body { padding: 0; }
       .no-print { display: none; }
@@ -122,7 +135,85 @@ export async function GET(
     <button onclick="window.print()" style="padding: 10px 30px; background: #006633; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
       🖨️ Print / Save as PDF
     </button>
+    ${order.status === 'DISPATCHED' ? `
+    <button id="receiveBtn" class="receive-btn" onclick="openReceiveModal()">
+      ✅ Mark as Received
+    </button>
+    ` : order.status === 'RECEIVED' ? `
+    <span class="received-badge">✅ Received</span>
+    ` : ''}
   </div>
+  
+  ${order.status === 'DISPATCHED' ? `
+  <div id="receiveModal" class="modal-overlay">
+    <div class="modal-content">
+      <h3>📦 Confirm Receipt</h3>
+      <p style="margin-bottom: 15px;">Enter your name to confirm you have received this order:</p>
+      <input type="text" id="receivedByInput" placeholder="Your name" autocomplete="name" />
+      <div class="btn-row">
+        <button class="cancel-btn" onclick="closeReceiveModal()">Cancel</button>
+        <button id="confirmReceiveBtn" class="confirm-btn" onclick="confirmReceive()">Confirm Received</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    function openReceiveModal() {
+      document.getElementById('receiveModal').style.display = 'flex';
+      document.getElementById('receivedByInput').focus();
+    }
+    
+    function closeReceiveModal() {
+      document.getElementById('receiveModal').style.display = 'none';
+    }
+    
+    async function confirmReceive() {
+      const receivedBy = document.getElementById('receivedByInput').value.trim();
+      if (!receivedBy) {
+        alert('Please enter your name');
+        return;
+      }
+      
+      const btn = document.getElementById('confirmReceiveBtn');
+      const receiveBtn = document.getElementById('receiveBtn');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+      
+      try {
+        const response = await fetch('/api/orders/${order.id}/receive', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ received_by: receivedBy })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          alert('Order marked as received successfully!');
+          location.reload();
+        } else {
+          alert('Error: ' + (data.error || 'Failed to mark as received'));
+          btn.disabled = false;
+          btn.textContent = 'Confirm Received';
+        }
+      } catch (error) {
+        alert('Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Confirm Received';
+      }
+    }
+    
+    // Close modal on outside click
+    document.getElementById('receiveModal').addEventListener('click', function(e) {
+      if (e.target === this) closeReceiveModal();
+    });
+    
+    // Enter key to submit
+    document.getElementById('receivedByInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') confirmReceive();
+    });
+  </script>
+  ` : ''}
 
   <div class="header">
     <h1>REDAN COUPON</h1>
