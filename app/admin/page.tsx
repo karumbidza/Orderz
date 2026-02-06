@@ -531,7 +531,10 @@ export default function AdminPage() {
           loading: false,
           dispatchInfo: dispatchData.success ? dispatchData.data : null,
           customQty: initialQty,
-          dispatching: false
+          dispatching: false,
+          adjusting: false,
+          adjustments: {},
+          savingAdjustments: false
         });
       } else {
         showMessage('Error loading order details', 'error');
