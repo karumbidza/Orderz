@@ -13,7 +13,7 @@ export default function AdminLayout({
     <div className="min-h-screen bg-slate-50">
       {/* Admin Header with User Profile */}
       <header className="bg-slate-900 shadow-lg">
-        <div className="w-full max-w-[1536px] mx-auto px-[24px]">
+        <div className="w-full px-6">
           <div className="flex justify-between items-center h-14">
             {/* Logo / Title */}
             <div className="flex items-center gap-3">

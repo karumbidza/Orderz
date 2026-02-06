@@ -1359,11 +1359,10 @@ export default function AdminPage() {
       <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }} className="no-print">
         {/* App Bar */}
         <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Container maxWidth="xl" disableGutters>
-            <Toolbar sx={{ px: '24px' }}>
-              <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                Redan Coupon
-              </Typography>
+          <Toolbar sx={{ px: 3 }}>
+            <Typography variant="h6" sx={{ flexGrow: 1 }}>
+              Redan Coupon
+            </Typography>
             <IconButton onClick={() => {
               if (activeTab === 'orders') loadOrders();
               else if (activeTab === 'inventory') loadStock();
@@ -1375,11 +1374,10 @@ export default function AdminPage() {
             }}>
               <RefreshIcon />
             </IconButton>
-            </Toolbar>
-          </Container>
+          </Toolbar>
         </AppBar>
 
-        <Container maxWidth="xl" sx={{ py: 3, px: '24px' }}>
+        <Box sx={{ py: 3, px: 3 }}>
           {/* Page Header */}
           <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box>
@@ -1653,7 +1651,7 @@ export default function AdminPage() {
               />
             )}
           </Paper>
-        </Container>
+        </Box>
 
         {/* Stock Modal (legacy - keep for compatibility) */}
         <Dialog open={stockModal.open} onClose={() => setStockModal({ ...stockModal, open: false })} maxWidth="xs" fullWidth>
