@@ -20,12 +20,13 @@ export async function GET(
     }
     
     // Get order with site details
+    // Note: sites table also has 'status' column, so we alias o.status to avoid collision
     const orders = await sql`
       SELECT 
         o.id,
         o.voucher_number,
         o.category,
-        o.status,
+        o.status as order_status,
         o.total_amount,
         o.order_date,
         o.requested_by,
@@ -51,7 +52,9 @@ export async function GET(
       return new Response('Order not found', { status: 404 });
     }
     
-    const order = orders[0];
+    // Map order_status back to status (sites table also has status column causing collision)
+    const orderRow = orders[0] as any;
+    const order = { ...orderRow, status: orderRow.order_status };
     
     // Get order items with dispatch info
     const items = await sql`

@@ -18,12 +18,13 @@ export async function GET(
     }
 
     // Get order with site info
+    // Note: sites table also has 'status' column, so we alias o.status to avoid collision
     const orderResult = await sql`
       SELECT 
         o.id,
         o.voucher_number as order_number,
         o.category,
-        o.status,
+        o.status as order_status,
         o.total_amount,
         o.order_date as created_at,
         o.dispatched_at,
@@ -44,7 +45,9 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
     }
 
-    const order = orderResult[0];
+    // Map order_status back to status for API response
+    const order = { ...orderResult[0], status: orderResult[0].order_status };
+    delete (order as any).order_status;
 
     // Get order items - order_items has: id, order_id, employee_id, item_id, qty_requested, qty_dispatched, qty_approved, unit_cost, line_total, size, employee_name, notes, sku, item_name
     const items = await sql`

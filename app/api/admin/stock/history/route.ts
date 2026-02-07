@@ -236,13 +236,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get unique categories for filter dropdown
+    // Get all categories from items table (not just ones with movements)
     const categories = await sql`
-      SELECT DISTINCT i.category 
-      FROM stock_movements sm 
-      JOIN items i ON sm.item_id = i.id 
-      WHERE i.category IS NOT NULL 
-      ORDER BY i.category
+      SELECT DISTINCT category 
+      FROM items 
+      WHERE category IS NOT NULL AND is_active = true
+      ORDER BY category
     `;
 
     // Get summary stats

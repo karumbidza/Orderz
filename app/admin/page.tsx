@@ -231,8 +231,22 @@ interface SiteTotal {
   last_dispatch_date: string | null;
 }
 
-type TabValue = 'orders' | 'inventory' | 'sites' | 'reports';
+type TabValue = 'dashboard' | 'orders' | 'inventory' | 'sites' | 'reports';
 type ReportView = 'movements' | 'site-analysis';
+
+interface DashboardData {
+  period: { from: string; to: string };
+  orders: any;
+  inventory: any;
+  low_stock: { count: number; items: any[] };
+  movements: any;
+  top_moving_items: any[];
+  sites: any;
+  pending_orders: any[];
+  order_trend: any[];
+  category_orders: any[];
+  generated_at: string;
+}
 
 const STATUS_COLORS: Record<string, 'warning' | 'info' | 'secondary' | 'success' | 'error' | 'default'> = {
   PENDING: 'warning',
@@ -251,8 +265,10 @@ export default function AdminPage() {
   const { user } = useUser();
   const userEmail = user?.primaryEmailAddress?.emailAddress || 'Admin';
   
-  const [activeTab, setActiveTab] = useState<TabValue>('orders');
+  const [activeTab, setActiveTab] = useState<TabValue>('dashboard');
   const [reportView, setReportView] = useState<ReportView>('movements');
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
   const [stockHistory, setStockHistory] = useState<StockMovement[]>([]);
@@ -353,11 +369,35 @@ export default function AdminPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [movementCategories, setMovementCategories] = useState<string[]>([]);
   
-  // Date filter for reports (global)
-  const [dateFrom, setDateFrom] = useState<string>('');
-  const [dateTo, setDateTo] = useState<string>('');
+  // Date filter for reports (global) - default to current month
+  const getDefaultDateFrom = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  };
+  const getDefaultDateTo = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+  const [dateFrom, setDateFrom] = useState<string>(getDefaultDateFrom);
+  const [dateTo, setDateTo] = useState<string>(getDefaultDateTo);
 
   // Load data functions
+  const loadDashboard = async () => {
+    setDashboardLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (dateFrom) params.append('dateFrom', dateFrom);
+      if (dateTo) params.append('dateTo', dateTo);
+      const res = await fetch(`/api/admin/dashboard?${params.toString()}`);
+      const data = await res.json();
+      if (data.success) setDashboardData(data.data);
+      else showMessage('Error: ' + data.error, 'error');
+    } catch {
+      showMessage('Failed to load dashboard', 'error');
+    }
+    setDashboardLoading(false);
+  };
+
   const loadOrders = async () => {
     setLoading(true);
     try {
@@ -486,7 +526,8 @@ export default function AdminPage() {
 
   // Load data on tab change
   useEffect(() => {
-    if (activeTab === 'orders') loadOrders();
+    if (activeTab === 'dashboard') loadDashboard();
+    else if (activeTab === 'orders') loadOrders();
     else if (activeTab === 'inventory') loadStock();
     else if (activeTab === 'sites') loadSites();
     else if (activeTab === 'reports') {
@@ -1425,7 +1466,8 @@ export default function AdminPage() {
               Redan Coupon
             </Typography>
             <IconButton onClick={() => {
-              if (activeTab === 'orders') loadOrders();
+              if (activeTab === 'dashboard') loadDashboard();
+              else if (activeTab === 'orders') loadOrders();
               else if (activeTab === 'inventory') loadStock();
               else if (activeTab === 'sites') loadSites();
               else if (activeTab === 'reports') {
@@ -1443,12 +1485,14 @@ export default function AdminPage() {
           <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box>
               <Typography variant="h4">
-                {activeTab === 'orders' ? 'Orders' : 
+                {activeTab === 'dashboard' ? 'Dashboard' :
+                 activeTab === 'orders' ? 'Orders' : 
                  activeTab === 'inventory' ? 'Inventory' : 
                  activeTab === 'sites' ? 'Sites' : 'Reports'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {activeTab === 'orders' ? 'Manage incoming orders and dispatches' : 
+                {activeTab === 'dashboard' ? 'Overview and key metrics' :
+                 activeTab === 'orders' ? 'Manage incoming orders and dispatches' : 
                  activeTab === 'inventory' ? 'Track stock levels and manage inventory' : 
                  activeTab === 'sites' ? 'Manage site information' : 
                  reportView === 'movements' ? 'Stock movement history and tracking' : 'Site dispatch totals and analysis'}
@@ -1457,6 +1501,25 @@ export default function AdminPage() {
             <Stack direction="row" spacing={2}>
               {activeTab === 'inventory' && (
                 <>
+                  <Button 
+                    variant="outlined" 
+                    startIcon={<DownloadIcon />}
+                    onClick={() => window.open('/api/admin/inventory/export?format=pdf', '_blank')}
+                  >
+                    Export PDF
+                  </Button>
+                  <Button 
+                    variant="outlined" 
+                    startIcon={<DownloadIcon />}
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = '/api/admin/inventory/export?format=csv';
+                      link.download = `inventory-${new Date().toISOString().split('T')[0]}.csv`;
+                      link.click();
+                    }}
+                  >
+                    Export CSV
+                  </Button>
                   <Button 
                     variant="contained" 
                     startIcon={<AddIcon />} 
@@ -1481,6 +1544,7 @@ export default function AdminPage() {
           {/* Tabs */}
           <Paper sx={{ mb: 3 }}>
             <Tabs value={activeTab} onChange={(_, v) => { setActiveTab(v); setSearchQuery(''); setStatusFilter('all'); setCategoryFilter('all'); setTypeFilter('all'); }} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tab icon={<TotalsIcon />} iconPosition="start" label="Dashboard" value="dashboard" />
               <Tab icon={<ReceiptIcon />} iconPosition="start" label="Orders" value="orders" />
               <Tab icon={<InventoryIcon />} iconPosition="start" label="Inventory" value="inventory" />
               <Tab icon={<SiteIcon />} iconPosition="start" label="Sites" value="sites" />
@@ -1488,7 +1552,9 @@ export default function AdminPage() {
             </Tabs>
           </Paper>
 
-          {/* Search and Filters */}
+          {/* Search and Filters - Only show for non-dashboard tabs */}
+          {activeTab !== 'dashboard' && (
+          <>
           <Paper sx={{ mb: 2, p: 2 }}>
             <Stack direction="row" spacing={2} alignItems="center">
               <TextField
@@ -1664,8 +1730,303 @@ export default function AdminPage() {
               </Typography>
             </Stack>
           </Paper>
+          </>
+          )}
 
-          {/* Data Grid */}
+          {/* Dashboard Content */}
+          {activeTab === 'dashboard' && (
+            <Box>
+              {dashboardLoading ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 8 }}>
+                  <CircularProgress />
+                </Box>
+              ) : dashboardData ? (
+                <>
+                  {/* Compact Stats Row */}
+                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 1.5, mb: 2 }}>
+                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'warning.main' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Pending Orders</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+                        <Typography variant="h5" fontWeight={600}>{dashboardData.orders.pending_orders}</Typography>
+                        <Typography variant="caption" color="text.secondary">${Number(dashboardData.orders.pending_value).toLocaleString()}</Typography>
+                      </Box>
+                    </Paper>
+                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'info.main' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Dispatched</Typography>
+                      <Typography variant="h5" fontWeight={600}>{dashboardData.orders.dispatched_orders}</Typography>
+                    </Paper>
+                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'success.main' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Received</Typography>
+                      <Typography variant="h5" fontWeight={600}>{dashboardData.orders.received_orders}</Typography>
+                    </Paper>
+                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'secondary.main' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Partial</Typography>
+                      <Typography variant="h5" fontWeight={600}>{dashboardData.orders.partial_orders}</Typography>
+                    </Paper>
+                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'error.main' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Low/Out Stock</Typography>
+                      <Typography variant="h5" fontWeight={600} color="error.main">{dashboardData.low_stock.count}</Typography>
+                    </Paper>
+                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'primary.main' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Inventory Value</Typography>
+                      <Typography variant="h5" fontWeight={600}>${Number(dashboardData.inventory.total_stock_value).toLocaleString()}</Typography>
+                    </Paper>
+                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Total Items</Typography>
+                      <Typography variant="h5" fontWeight={600}>{dashboardData.inventory.total_items}</Typography>
+                    </Paper>
+                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Active Sites</Typography>
+                      <Typography variant="h5" fontWeight={600}>{dashboardData.sites.active_sites}</Typography>
+                    </Paper>
+                  </Box>
+
+                  {/* Two Column Layout */}
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
+                    {/* Left Column */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {/* Inventory by Category */}
+                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Inventory by Category</Typography>
+                        <Box component="table" sx={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                          <Box component="thead">
+                            <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                              <Box component="th" sx={{ py: 0.75, textAlign: 'left', fontWeight: 500, color: 'text.secondary' }}>Category</Box>
+                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Items</Box>
+                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Qty</Box>
+                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Value</Box>
+                            </Box>
+                          </Box>
+                          <Box component="tbody">
+                            {dashboardData.inventory.by_category.map((cat: any) => (
+                              <Box component="tr" key={cat.category} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                                <Box component="td" sx={{ py: 0.75, fontWeight: 500 }}>{cat.category}</Box>
+                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', color: 'text.secondary' }}>{cat.item_count}</Box>
+                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', color: 'text.secondary' }}>{Number(cat.total_qty).toLocaleString()}</Box>
+                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', fontWeight: 600 }}>${Number(cat.stock_value).toLocaleString()}</Box>
+                              </Box>
+                            ))}
+                          </Box>
+                        </Box>
+                      </Paper>
+
+                      {/* Recent Pending Orders */}
+                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Recent Pending Orders</Typography>
+                        {dashboardData.pending_orders.length > 0 ? (
+                          <Box sx={{ maxHeight: 180, overflow: 'auto' }}>
+                            {dashboardData.pending_orders.slice(0, 6).map((order: any) => (
+                              <Box 
+                                key={order.id} 
+                                sx={{ 
+                                  py: 0.75, 
+                                  px: 1,
+                                  mb: 0.5,
+                                  borderRadius: 0.5,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  cursor: 'pointer',
+                                  fontSize: 12,
+                                  '&:hover': { bgcolor: 'action.hover' }
+                                }}
+                                onClick={() => { setActiveTab('orders'); setTimeout(() => viewOrder(order.id), 100); }}
+                              >
+                                <Box>
+                                  <Typography variant="body2" fontWeight={500} sx={{ fontSize: 12 }}>{order.voucher_number}</Typography>
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
+                                    {order.site_name}
+                                  </Typography>
+                                </Box>
+                                <Typography variant="body2" fontWeight={600} sx={{ fontSize: 12 }}>${Number(order.total_amount).toFixed(2)}</Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="success.main" sx={{ fontSize: 12 }}>✓ No pending orders</Typography>
+                        )}
+                      </Paper>
+                    </Box>
+
+                    {/* Right Column */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {/* Orders by Category */}
+                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Orders This Period</Typography>
+                        <Box component="table" sx={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                          <Box component="thead">
+                            <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                              <Box component="th" sx={{ py: 0.75, textAlign: 'left', fontWeight: 500, color: 'text.secondary' }}>Category</Box>
+                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Orders</Box>
+                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Value</Box>
+                            </Box>
+                          </Box>
+                          <Box component="tbody">
+                            {dashboardData.category_orders.map((cat: any) => (
+                              <Box component="tr" key={cat.category} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                                <Box component="td" sx={{ py: 0.75, fontWeight: 500 }}>{cat.category}</Box>
+                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', color: 'text.secondary' }}>{cat.order_count}</Box>
+                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', fontWeight: 600 }}>${Number(cat.total_value).toLocaleString()}</Box>
+                              </Box>
+                            ))}
+                          </Box>
+                        </Box>
+                      </Paper>
+
+                      {/* Stock Movements Summary */}
+                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Stock Movements</Typography>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Box sx={{ flex: 1, p: 1, bgcolor: 'success.50', borderRadius: 1, textAlign: 'center' }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>IN</Typography>
+                            <Typography variant="body1" fontWeight={600} color="success.main">{Number(dashboardData.movements.total_qty_in).toLocaleString()}</Typography>
+                          </Box>
+                          <Box sx={{ flex: 1, p: 1, bgcolor: 'info.50', borderRadius: 1, textAlign: 'center' }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>OUT</Typography>
+                            <Typography variant="body1" fontWeight={600} color="info.main">{Number(dashboardData.movements.total_qty_out).toLocaleString()}</Typography>
+                          </Box>
+                          <Box sx={{ flex: 1, p: 1, bgcolor: 'error.50', borderRadius: 1, textAlign: 'center' }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>DAMAGE</Typography>
+                            <Typography variant="body1" fontWeight={600} color="error.main">{Number(dashboardData.movements.total_qty_damaged).toLocaleString()}</Typography>
+                          </Box>
+                        </Box>
+                      </Paper>
+
+                      {/* Top Sites */}
+                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Top Ordering Sites</Typography>
+                        {dashboardData.sites.top_sites.length > 0 ? (
+                          <Box sx={{ maxHeight: 140, overflow: 'auto' }}>
+                            {dashboardData.sites.top_sites.slice(0, 5).map((site: any, idx: number) => (
+                              <Box 
+                                key={site.site_name} 
+                                sx={{ 
+                                  py: 0.5,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  fontSize: 12,
+                                }}
+                              >
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Typography variant="caption" sx={{ width: 16, color: idx === 0 ? 'success.main' : 'text.secondary', fontWeight: idx === 0 ? 700 : 400 }}>{idx + 1}.</Typography>
+                                  <Typography variant="body2" sx={{ fontSize: 12 }}>{site.site_name}</Typography>
+                                </Box>
+                                <Typography variant="body2" fontWeight={600} sx={{ fontSize: 12 }}>${Number(site.total_value).toLocaleString()}</Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12 }}>No orders in period</Typography>
+                        )}
+                      </Paper>
+                    </Box>
+                  </Box>
+
+                  {/* Low Stock Items - Full Width */}
+                  <Paper sx={{ p: 2, border: '1px solid', borderColor: 'error.200', bgcolor: 'error.50' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'error.dark' }}>
+                        ⚠️ Low Stock Alert ({dashboardData.low_stock.count} items)
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Button 
+                          size="small" 
+                          variant="outlined"
+                          startIcon={<DownloadIcon />}
+                          onClick={() => {
+                            const items = dashboardData?.low_stock?.items || [];
+                            const csv = [
+                              ['SKU', 'Product', 'Category', 'Size', 'On Hand', 'Reorder Level', 'Status'].join(','),
+                              ...items.map((i: any) => [
+                                i.sku, i.product, i.category, i.size || '', i.quantity_on_hand, i.reorder_level, i.stock_status
+                              ].join(','))
+                            ].join('\n');
+                            const blob = new Blob([csv], { type: 'text/csv' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `low-stock-${new Date().toISOString().split('T')[0]}.csv`;
+                            a.click();
+                          }}
+                          sx={{ fontSize: 11 }}
+                        >
+                          CSV
+                        </Button>
+                        <Button 
+                          size="small" 
+                          variant="outlined"
+                          startIcon={<PrintIcon />}
+                          onClick={() => {
+                            const items = dashboardData?.low_stock?.items || [];
+                            const html = `<html><head><title>Low Stock Report</title><style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}.out{background:#ffebee}.low{background:#fff3e0}</style></head><body><h2>Low Stock Report - ${new Date().toLocaleDateString()}</h2><table><tr><th>SKU</th><th>Product</th><th>Category</th><th>Size</th><th>On Hand</th><th>Status</th></tr>${items.map((i: any) => `<tr class="${i.stock_status === 'OUT_OF_STOCK' ? 'out' : 'low'}"><td>${i.sku}</td><td>${i.product}</td><td>${i.category}</td><td>${i.size || '-'}</td><td>${i.quantity_on_hand}</td><td>${i.stock_status === 'OUT_OF_STOCK' ? 'OUT' : 'LOW'}</td></tr>`).join('')}</table></body></html>`;
+                            const w = window.open('', '_blank');
+                            w?.document.write(html);
+                            w?.document.close();
+                            w?.print();
+                          }}
+                          sx={{ fontSize: 11 }}
+                        >
+                          Print
+                        </Button>
+                      </Stack>
+                    </Box>
+                    {dashboardData.low_stock.items.length > 0 ? (
+                      <Box sx={{ maxHeight: 200, overflow: 'auto', bgcolor: 'background.paper', borderRadius: 1 }}>
+                        <Box component="table" sx={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+                          <Box component="thead" sx={{ position: 'sticky', top: 0, bgcolor: 'background.paper' }}>
+                            <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'left', fontWeight: 500 }}>SKU</Box>
+                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'left', fontWeight: 500 }}>Product</Box>
+                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'left', fontWeight: 500 }}>Category</Box>
+                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'left', fontWeight: 500 }}>Size</Box>
+                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'right', fontWeight: 500 }}>On Hand</Box>
+                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'center', fontWeight: 500 }}>Status</Box>
+                            </Box>
+                          </Box>
+                          <Box component="tbody">
+                            {dashboardData.low_stock.items.map((item: any) => (
+                              <Box 
+                                component="tr" 
+                                key={item.id} 
+                                sx={{ 
+                                  '&:hover': { bgcolor: 'action.hover' },
+                                  bgcolor: item.stock_status === 'OUT_OF_STOCK' ? 'error.50' : 'warning.50'
+                                }}
+                              >
+                                <Box component="td" sx={{ py: 0.5, px: 1 }}><code style={{ fontSize: 10 }}>{item.sku}</code></Box>
+                                <Box component="td" sx={{ py: 0.5, px: 1 }}>{item.product}</Box>
+                                <Box component="td" sx={{ py: 0.5, px: 1 }}>{item.category}</Box>
+                                <Box component="td" sx={{ py: 0.5, px: 1 }}>{item.size || '-'}</Box>
+                                <Box component="td" sx={{ py: 0.5, px: 1, textAlign: 'right', fontWeight: 700 }}>{item.quantity_on_hand}</Box>
+                                <Box component="td" sx={{ py: 0.5, px: 1, textAlign: 'center' }}>
+                                  <Chip 
+                                    label={item.stock_status === 'OUT_OF_STOCK' ? 'OUT' : 'LOW'} 
+                                    color={item.stock_status === 'OUT_OF_STOCK' ? 'error' : 'warning'} 
+                                    size="small" 
+                                    sx={{ height: 18, fontSize: 10 }}
+                                  />
+                                </Box>
+                              </Box>
+                            ))}
+                          </Box>
+                        </Box>
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="success.main" sx={{ fontSize: 12 }}>✓ All items adequately stocked</Typography>
+                    )}
+                  </Paper>
+                </>
+              ) : (
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography color="text.secondary">No dashboard data available</Typography>
+                </Paper>
+              )}
+            </Box>
+          )}
+
+          {/* Data Grid - Only show for non-dashboard tabs */}
+          {activeTab !== 'dashboard' && (
           <Paper sx={{ height: 600 }}>
             {loading ? (
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
@@ -1712,6 +2073,7 @@ export default function AdminPage() {
               />
             )}
           </Paper>
+          )}
         </Box>
 
         {/* Stock Modal (legacy - keep for compatibility) */}
