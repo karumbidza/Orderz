@@ -2390,10 +2390,11 @@ export default function AdminPage() {
                 SelectProps={{ native: true }}
               >
                 <option value="">Select Category</option>
-                <option value="PPE">PPE</option>
-                <option value="Uniforms">Uniforms</option>
-                <option value="Stationery">Stationery</option>
                 <option value="Consumable">Consumable</option>
+                <option value="Equipment">Equipment</option>
+                <option value="PPE">PPE</option>
+                <option value="Stationery">Stationery</option>
+                <option value="Uniforms">Uniforms</option>
               </TextField>
               <TextField
                 label="SKU (optional - auto-generated if blank)"
