@@ -267,18 +267,17 @@ export async function POST(request: NextRequest) {
       `;
 
       if (warehouseCheck.length > 0) {
-        // Create stock level record
         const initialQty = initial_quantity || 0;
         
+        // Initialize stock_levels record with 0 (trigger will handle actual quantity via movement)
         await sql`
           INSERT INTO stock_levels (item_id, warehouse_id, quantity_on_hand, last_updated)
-          VALUES (${newItem.id}, ${defaultWarehouseId}, ${initialQty}, NOW())
-          ON CONFLICT (item_id, warehouse_id) DO UPDATE SET
-            quantity_on_hand = stock_levels.quantity_on_hand + ${initialQty},
-            last_updated = NOW()
+          VALUES (${newItem.id}, ${defaultWarehouseId}, 0, NOW())
+          ON CONFLICT (item_id, warehouse_id) DO NOTHING
         `;
 
         // If initial quantity > 0, create stock movement
+        // The database trigger trg_update_stock_after_movement will update stock_levels
         if (initialQty > 0) {
           await sql`
             INSERT INTO stock_movements 
