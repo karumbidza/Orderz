@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { apiResponse, apiError, getPaginationParams } from '@/lib/api-utils';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +78,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/employees - Create employee
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const body = await request.json();
     const { employee_code, first_name, last_name, site_id, role, phone, email, hire_date } = body;

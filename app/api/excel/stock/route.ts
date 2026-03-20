@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { validateExcelApiKey } from '@/lib/excel-auth';
 import { sql } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -9,6 +10,9 @@ import { getSearchParams } from '@/lib/api-utils';
 // Returns flat, denormalized data for Power Query
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = validateExcelApiKey(request);
+  if (authError) return authError;
   try {
     const params = getSearchParams(request);
     const warehouseCode = params.get('warehouse');

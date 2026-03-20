@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,6 +8,9 @@ export const dynamic = 'force-dynamic';
 // GET /api/admin/inventory - Get all items for admin
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '500');
@@ -45,6 +49,9 @@ export async function GET(request: NextRequest) {
 // PATCH /api/admin/inventory - Update item (cost, active status)
 // ─────────────────────────────────────────────
 export async function PATCH(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError2 = await requireAdminAuth();
+  if (authError2) return authError2;
   try {
     const body = await request.json();
     const { item_id, cost, is_active } = body;
@@ -99,6 +106,7 @@ export async function PATCH(request: NextRequest) {
 
 // ─────────────────────────────────────────────
 // POST /api/admin/inventory - Add new item
+// ORDERZ-SEC: requireAdminAuth applied below
 // Features:
 // - Auto-generate SKU from category + product if not provided
 // - Lookup category_id from category name
@@ -106,9 +114,12 @@ export async function PATCH(request: NextRequest) {
 // - Support for tracking_type (QUANTITY, SERIALIZED, ASSIGNED)
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError3 = await requireAdminAuth();
+  if (authError3) return authError3;
   try {
     const body = await request.json();
-    const { 
+    const {
       sku: providedSku, 
       category, 
       category_id: providedCategoryId,
@@ -319,6 +330,9 @@ export async function POST(request: NextRequest) {
 // DELETE /api/admin/inventory - Soft delete item
 // ─────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError4 = await requireAdminAuth();
+  if (authError4) return authError4;
   try {
     const { searchParams } = new URL(request.url);
     const item_id = searchParams.get('item_id');

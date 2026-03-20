@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/api-utils';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const { id } = await params;
     const employeeId = parseInt(id);
@@ -90,6 +94,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // ORDERZ-SEC
+  const authError2 = await requireAdminAuth();
+  if (authError2) return authError2;
   try {
     const { id } = await params;
     const employeeId = parseInt(id);

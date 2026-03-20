@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
 import { z } from 'zod';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 import { successResponse, errorResponse, handleApiError } from '@/lib/api-utils';
@@ -22,6 +23,9 @@ const FulfillSchema = z.object({
 // Creates stock movements and updates order items
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const { id } = await params;
     const orderId = parseInt(id);

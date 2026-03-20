@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { validateExcelApiKey } from '@/lib/excel-auth';
 import { sql } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -8,6 +9,9 @@ export const revalidate = 0;
 // GET /api/excel/inventory - Get site inventory (received items)
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = validateExcelApiKey(request);
+  if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
     const siteId = searchParams.get('site_id');

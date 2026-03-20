@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 const API_VERSION = 'v4-shared-connection';
@@ -11,6 +12,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const orderId = parseInt(params.id);
     
@@ -84,9 +88,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  // ORDERZ-SEC
+  const authError2 = await requireAdminAuth();
+  if (authError2) return authError2;
   try {
     const orderId = parseInt(params.id);
-    
+
     if (isNaN(orderId)) {
       return NextResponse.json({ success: false, error: 'Invalid order ID' }, { status: 400 });
     }

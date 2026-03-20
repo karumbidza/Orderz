@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 import { ItemCreateSchema, ItemUpdateSchema, PaginationSchema, ItemFilterSchema } from '@/lib/validations';
@@ -108,6 +109,9 @@ export async function GET(request: NextRequest) {
 // POST /api/items - Create a new item
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const body = await request.json();
     const validated = ItemCreateSchema.parse(body);

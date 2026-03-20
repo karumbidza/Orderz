@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
+import { validateExcelApiKey } from '@/lib/excel-auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -11,6 +12,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // ORDERZ-SEC
+  const authError = validateExcelApiKey(request);
+  if (authError) return authError;
   try {
     const { id } = await params;
     const orderId = parseInt(id);

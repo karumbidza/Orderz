@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,9 @@ export const dynamic = 'force-dynamic';
 // Shows ALL items, even those with no stock records (quantity = 0)
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
     const warehouse_id = searchParams.get('warehouse_id') || '2'; // Default to HEAD-OFFICE
@@ -83,6 +87,9 @@ export async function GET(request: NextRequest) {
 // POST /api/admin/stock - Add stock (IN movement)
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError2 = await requireAdminAuth();
+  if (authError2) return authError2;
   try {
     const body = await request.json();
     const { item_id, warehouse_id, quantity, reason, reference_id, grn_number, created_by } = body;
@@ -138,6 +145,9 @@ export async function POST(request: NextRequest) {
 // Supports: movement_type = 'OUT' | 'DAMAGE' | 'RETURN' | 'ADJUSTMENT'
 // ─────────────────────────────────────────────
 export async function PATCH(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError3 = await requireAdminAuth();
+  if (authError3) return authError3;
   try {
     const body = await request.json();
     const { item_id, warehouse_id, quantity, reason, movement_type = 'OUT', reference_id, order_id } = body;
@@ -245,6 +255,9 @@ export async function PATCH(request: NextRequest) {
 // Body: { items: [{ item_id, quantity, reason? }], warehouse_id }
 // ─────────────────────────────────────────────
 export async function PUT(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError4 = await requireAdminAuth();
+  if (authError4) return authError4;
   try {
     const body = await request.json();
     const { items, warehouse_id, grn_number } = body;

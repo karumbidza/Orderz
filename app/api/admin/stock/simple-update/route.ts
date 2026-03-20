@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
 // Simple endpoint that does exactly what dispatch does for ONE item
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   // Create sql function locally, fresh for each request
   const sql = neon(process.env.DATABASE_URL!);
   

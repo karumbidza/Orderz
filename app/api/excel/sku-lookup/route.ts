@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { validateExcelApiKey } from '@/lib/excel-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = validateExcelApiKey(request);
+  if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
     const sku = searchParams.get('sku');

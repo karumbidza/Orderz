@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
 import { z } from 'zod';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +65,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const id = parseInt(params.id);
     if (isNaN(id)) {
@@ -161,6 +165,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  // ORDERZ-SEC
+  const authError2 = await requireAdminAuth();
+  if (authError2) return authError2;
   try {
     const id = parseInt(params.id);
     if (isNaN(id)) {

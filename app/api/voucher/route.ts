@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
+import { validateExcelApiKey } from '@/lib/excel-auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -8,6 +9,9 @@ export const revalidate = 0;
 // GET /api/voucher - Get next voucher number (preview, doesn't increment)
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = validateExcelApiKey(request);
+  if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
     const prefix = searchParams.get('prefix') || 'RV';
@@ -56,6 +60,9 @@ export async function GET(request: NextRequest) {
 // POST /api/voucher - Generate and reserve next voucher number
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError2 = validateExcelApiKey(request);
+  if (authError2) return authError2;
   try {
     const body = await request.json().catch(() => ({}));
     const prefix = body.prefix || 'RV';

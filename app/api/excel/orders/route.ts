@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { getSearchParams, successResponse, errorResponse } from '@/lib/api-utils';
+import { validateExcelApiKey } from '@/lib/excel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ export const dynamic = 'force-dynamic';
 // Returns denormalized order data with items
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = validateExcelApiKey(request);
+  if (authError) return authError;
   try {
     const params = getSearchParams(request);
     const format = params.get('format') || 'json';
@@ -186,6 +190,9 @@ export async function GET(request: NextRequest) {
 // }
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError2 = validateExcelApiKey(request);
+  if (authError2) return authError2;
   try {
     const body = await request.json();
     

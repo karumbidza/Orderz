@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
 import { ItemUpdateSchema } from '@/lib/validations';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 import { successResponse, errorResponse, handleApiError } from '@/lib/api-utils';
@@ -40,6 +41,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PUT /api/items/[id] - Update item
 // ─────────────────────────────────────────────
 export async function PUT(request: NextRequest, { params }: RouteParams) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const { id } = await params;
     const itemId = parseInt(id);
@@ -131,6 +135,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 // DELETE /api/items/[id] - Soft delete item
 // ─────────────────────────────────────────────
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  // ORDERZ-SEC
+  const authError2 = await requireAdminAuth();
+  if (authError2) return authError2;
   try {
     const { id } = await params;
     const itemId = parseInt(id);

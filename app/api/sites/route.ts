@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 import { SiteCreateSchema, PaginationSchema } from '@/lib/validations';
@@ -73,6 +74,9 @@ export async function GET(request: NextRequest) {
 // POST /api/sites - Create a new site
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const body = await request.json();
     const validated = SiteCreateSchema.parse(body);

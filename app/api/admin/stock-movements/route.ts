@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,9 @@ export const dynamic = 'force-dynamic';
 // Query params: item_id, warehouse_id, movement_type, limit
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
     const item_id = searchParams.get('item_id');
@@ -154,6 +158,9 @@ export async function GET(request: NextRequest) {
 // Supports: IN, OUT, RETURN, DAMAGE, ADJUSTMENT, TRANSFER
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError2 = await requireAdminAuth();
+  if (authError2) return authError2;
   try {
     const body = await request.json();
     const { 

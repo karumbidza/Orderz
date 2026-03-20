@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,9 @@ const STATUS_VALUES = ['PENDING', 'PROCESSING', 'DISPATCHED', 'PARTIAL_DISPATCH'
 // GET /api/admin/orders - Get all orders for admin
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '100');
@@ -96,6 +100,9 @@ export async function GET(request: NextRequest) {
 // PATCH /api/admin/orders - Update order status
 // ─────────────────────────────────────────────
 export async function PATCH(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError2 = await requireAdminAuth();
+  if (authError2) return authError2;
   try {
     const body = await request.json();
     const { order_id, status, updated_by } = body;
@@ -162,6 +169,9 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/admin/orders - Delete all orders (PROTECTED - requires admin key + confirmation)
 // ─────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError3 = await requireAdminAuth();
+  if (authError3) return authError3;
   try {
     // SECURITY: Require admin authentication
     const adminKey = request.headers.get('X-Admin-Key');

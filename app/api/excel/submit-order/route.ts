@@ -1,29 +1,31 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { z } from 'zod';
+import { validateExcelApiKey } from '@/lib/excel-auth';
+import { isRateLimited } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// Validation schema for order submission from Excel
+// ORDERZ-SEC: Validation schema for order submission from Excel
 const OrderItemSchema = z.object({
-  item_id: z.number().int().positive(),
-  sku: z.string(),
-  item_name: z.string(),
-  size: z.string().optional().nullable(),
-  quantity: z.number().int().positive(),
-  unit_cost: z.number().min(0),
-  line_total: z.number().min(0),
+  item_id:   z.number().int().positive(),
+  sku:       z.string().min(1).max(50).trim(),
+  item_name: z.string().min(1).max(200).trim(),
+  size:      z.string().max(100).trim().optional().nullable(),
+  quantity:  z.number().int().positive().max(10_000),
+  unit_cost: z.number().min(0).max(100_000),
+  line_total:z.number().min(0).max(10_000_000),
 });
 
 const OrderSubmitSchema = z.object({
-  site_id: z.number().int().positive(),
-  site_name: z.string(),
-  category: z.string().min(1),
-  requested_by: z.string().optional(),
-  notes: z.string().optional(),
-  total_amount: z.number().min(0),
-  items: z.array(OrderItemSchema).min(1, 'At least one item is required'),
+  site_id:      z.number().int().positive(),
+  site_name:    z.string().min(1).max(100).trim(),
+  category:     z.string().min(1).max(100).trim(),
+  requested_by: z.string().max(100).trim().optional(),
+  notes:        z.string().max(500).trim().optional(),
+  total_amount: z.number().min(0).max(1_000_000),
+  items: z.array(OrderItemSchema).min(1, 'At least one item is required').max(50),
 });
 
 // ─────────────────────────────────────────────
@@ -52,6 +54,17 @@ async function generateVoucherNumber(prefix: string = 'RV'): Promise<string> {
 // Voucher number is generated server-side (atomic, no conflicts)
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  // ORDERZ-SEC: Rate limit first, then auth
+  const ip = request.headers.get('x-forwarded-for') ?? 'unknown';
+  if (isRateLimited(ip, 20, 60_000)) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      { status: 429 }
+    );
+  }
+  const authError = validateExcelApiKey(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const validated = OrderSubmitSchema.parse(body);
@@ -145,6 +158,10 @@ export async function POST(request: NextRequest) {
 // GET /api/excel/submit-order - Get orders for R.V Summary
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = validateExcelApiKey(request);
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');

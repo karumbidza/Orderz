@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
 import { SiteUpdateSchema } from '@/lib/validations';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 import { successResponse, errorResponse, handleApiError } from '@/lib/api-utils';
@@ -40,6 +41,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PUT /api/sites/[id] - Update site
 // ─────────────────────────────────────────────
 export async function PUT(request: NextRequest, { params }: RouteParams) {
+  // ORDERZ-SEC
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const { id } = await params;
     const siteId = parseInt(id);
@@ -80,6 +84,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 // DELETE /api/sites/[id] - Soft delete site
 // ─────────────────────────────────────────────
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  // ORDERZ-SEC
+  const authError2 = await requireAdminAuth();
+  if (authError2) return authError2;
   try {
     const { id } = await params;
     const siteId = parseInt(id);

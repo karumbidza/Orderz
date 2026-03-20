@@ -1,4 +1,6 @@
+import { NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
+import { validateExcelApiKey } from '@/lib/excel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -6,7 +8,10 @@ export const dynamic = 'force-dynamic';
 // GET /api/excel/lookups - Combined lookup data
 // Single request for all dropdowns in Excel
 // ─────────────────────────────────────────────
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // ORDERZ-SEC
+  const authError = validateExcelApiKey(request);
+  if (authError) return authError;
   try {
     // Fetch all lookup data in parallel
     const [sites, warehouses, categories] = await Promise.all([
