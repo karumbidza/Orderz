@@ -10,29 +10,32 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
-    const product = searchParams.get('product');
+    const rawProduct = searchParams.get('product');
     const category = searchParams.get('category');
 
-    if (!product) {
+    if (!rawProduct) {
       return NextResponse.json({ success: false, error: 'Product is required' }, { status: 400 });
     }
+
+    // Decode + as space (URL query params encode spaces as + in some clients)
+    const product = decodeURIComponent(rawProduct.replace(/\+/g, '%20')).trim();
 
     // Get all SKUs for this product
     let result;
     if (category) {
       result = await sql`
         SELECT sku, size, role, cost, unit
-        FROM items 
-        WHERE product = ${product}
-        AND category = ${category}
+        FROM items
+        WHERE product ILIKE ${product}
+        AND category ILIKE ${category}
         AND is_active = true
         ORDER BY role, size
       `;
     } else {
       result = await sql`
         SELECT sku, size, role, cost, unit
-        FROM items 
-        WHERE product = ${product}
+        FROM items
+        WHERE product ILIKE ${product}
         AND is_active = true
         ORDER BY role, size
       `;
