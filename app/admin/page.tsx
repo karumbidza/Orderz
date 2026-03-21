@@ -412,6 +412,28 @@ export default function AdminPage() {
   const [repPage, setRepPage] = useState(1);
   const REP_PAGE_SIZE = 30;
 
+  // ORDERZ-REPORTS — report system
+  const [activeReport, setActiveReport] = useState('cost-category');
+  const [reportDateFrom, setReportDateFrom] = useState(
+    new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10)
+  );
+  const [reportDateTo, setReportDateTo] = useState(
+    new Date().toISOString().slice(0,10)
+  );
+  const [reportLoading, setReportLoading] = useState(false);
+  const [costByCategoryData, setCostByCategoryData] = useState<any[]>([]);
+  const [costBySiteData, setCostBySiteData] = useState<{sites: any[]; breakdown: any[]}>({ sites: [], breakdown: [] });
+  const [orderFrequencyData, setOrderFrequencyData] = useState<any[]>([]);
+  const [financeData, setFinanceData] = useState<any[]>([]);
+  const [reorderData, setReorderData] = useState<any[]>([]);
+  const [forecastData, setForecastData] = useState<{items: any[]; total_order_value: number}>({ items: [], total_order_value: 0 });
+  const [velocityData, setVelocityData] = useState<any[]>([]);
+  const [financeSiteFilter, setFinanceSiteFilter] = useState('');
+  const [forecastLookback, setForecastLookback] = useState(90);
+  const [forecastDays, setForecastDays] = useState(30);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [editReorderLevel, setEditReorderLevel] = useState('0');
+
   // Load data functions
   const loadDashboard = async () => {
     setDashboardLoading(true);
@@ -567,6 +589,14 @@ export default function AdminPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  // ORDERZ-REPORTS
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      loadCurrentReport();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeReport, activeTab]);
 
   const showMessage = (message: string, severity: 'success' | 'error' | 'info' = 'info') => {
     setSnackbar({ open: true, message, severity });
@@ -835,6 +865,7 @@ export default function AdminPage() {
 
   // Stock View Modal Functions
   const openStockViewModal = async (item: StockItem) => {
+    setEditReorderLevel(String((item as any).reorder_level || 0));
     setStockViewModal({ open: true, item, history: [], loading: true, action: 'none', quantity: '', reason: '', editingCost: false, newCost: '' });
     try {
       const res = await fetch(`/api/admin/stock/history?item_id=${item.item_id}&limit=50`);
@@ -1373,6 +1404,70 @@ export default function AdminPage() {
     else if (activeTab === 'reports') { loadStockHistory(); loadSiteTotals(); }
   };
 
+  // ORDERZ-REPORTS
+  const loadCurrentReport = async () => {
+    setReportLoading(true);
+    try {
+      const params = new URLSearchParams({ from: reportDateFrom, to: reportDateTo });
+
+      if (activeReport === 'cost-category') {
+        const r = await fetch(`/api/admin/reports/cost-by-category?${params}`);
+        const d = await r.json();
+        if (d.success) setCostByCategoryData(d.data);
+      } else if (activeReport === 'cost-site') {
+        const r = await fetch(`/api/admin/reports/cost-by-site?${params}`);
+        const d = await r.json();
+        if (d.success) setCostBySiteData(d);
+      } else if (activeReport === 'frequency') {
+        const r = await fetch(`/api/admin/reports/order-frequency?${params}`);
+        const d = await r.json();
+        if (d.success) setOrderFrequencyData(d.data);
+      } else if (activeReport === 'finance') {
+        const fp = new URLSearchParams({ from: reportDateFrom, to: reportDateTo, ...(financeSiteFilter ? { site: financeSiteFilter } : {}) });
+        const r = await fetch(`/api/admin/reports/finance?${fp}`);
+        const d = await r.json();
+        if (d.success) setFinanceData(d.data);
+      } else if (activeReport === 'reorder') {
+        const r = await fetch('/api/admin/reports/reorder');
+        const d = await r.json();
+        if (d.success) setReorderData(d.items);
+      } else if (activeReport === 'forecast') {
+        const fp = new URLSearchParams({ days: String(forecastLookback), forecast: String(forecastDays) });
+        const r = await fetch(`/api/admin/reports/forecast?${fp}`);
+        const d = await r.json();
+        if (d.success) setForecastData(d);
+      } else if (activeReport === 'velocity') {
+        const r = await fetch('/api/admin/reports/velocity');
+        const d = await r.json();
+        if (d.success) setVelocityData(d.items);
+      }
+    } catch {
+      showMessage('Failed to load report', 'error');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  // ORDERZ-REPORTS
+  const handleSaveReorderLevel = async () => {
+    if (!stockViewModal.item) return;
+    try {
+      const res = await fetch('/api/admin/inventory', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: stockViewModal.item.item_id, reorder_level: parseInt(editReorderLevel) }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage('Reorder level saved', 'success');
+        loadStock();
+      } else {
+        showMessage('Error: ' + data.error, 'error');
+      }
+    } catch {
+      showMessage('Failed to save', 'error');
+    }
+  };
 
   // ─────────────────────────────────────────
   // RENDER
@@ -1778,153 +1873,491 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ─── REPORTS ─── ORDERZ-FILTER */}
+        {/* ORDERZ-REPORTS — Reports tab */}
         {activeTab === 'reports' && (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 20 }}>
-              <h1 style={{ fontSize: 22, fontWeight: 500, margin: 0 }}>Reports</h1>
-              <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }}>{reportView === 'movements' ? `${filteredHistory.length} movements` : `${filteredTotals.length} sites`}</span>
-              <div style={{ flex: 1 }} />
-              {/* Sub-view toggle */}
-              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.04)', borderRadius: 20, padding: 3, gap: 2 }}>
-                {(['movements', 'site-analysis'] as ReportView[]).map(v => (
-                  <button key={v} onClick={() => setReportView(v)} style={{ padding: '5px 14px', borderRadius: 16, border: 'none', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', background: reportView === v ? '#fff' : 'transparent', color: reportView === v ? '#0a0a0a' : 'rgba(0,0,0,0.5)', boxShadow: reportView === v ? '0 1px 3px rgba(0,0,0,0.08)' : 'none', fontWeight: reportView === v ? 500 : 400 }}>
-                    {v === 'movements' ? 'Stock Movements' : 'Site Analysis'}
-                  </button>
-                ))}
-              </div>
-              <button onClick={reportView === 'movements' ? downloadStockMovementsCSV : downloadSiteAnalysisCSV} style={btnSecondary}>↓ CSV</button>
+          <div style={{ padding: '0 0 32px' }}>
+            {/* Report sub-tabs */}
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 16 }}>
+              {[
+                { key: 'cost-category', label: 'Cost by Category' },
+                { key: 'cost-site', label: 'Cost by Site' },
+                { key: 'frequency', label: 'Order Frequency' },
+                { key: 'finance', label: 'Finance PDF' },
+                { key: 'reorder', label: 'Reorder Alert' },
+                { key: 'forecast', label: 'Forecast' },
+                { key: 'velocity', label: 'Stock Velocity' },
+                { key: 'audit', label: 'Movement Audit' },
+              ].map(({ key, label }) => (
+                <button key={key} onClick={() => setActiveReport(key)} style={{ padding: '6px 14px', borderRadius: 20, border: activeReport === key ? 'none' : '0.5px solid rgba(0,0,0,0.12)', background: activeReport === key ? '#0a0a0a' : 'transparent', color: activeReport === key ? '#fff' : 'rgba(0,0,0,0.6)', fontSize: 12, fontWeight: activeReport === key ? 500 : 400, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>{label}</button>
+              ))}
             </div>
 
-            {reportView === 'movements' ? (
-              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                {/* Filter panel */}
-                <div style={filterPanel}>
-                  <div style={{ padding: '12px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>Filters</span>
-                    <button onClick={() => { setRepSearch(''); setRepTypes([]); setRepCategories([]); setRepSiteSearch(''); setRepDateFrom(''); setRepDateTo(''); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#378add', cursor: 'pointer', fontFamily: 'inherit' }}>Clear all</button>
-                  </div>
-                  <div style={fpSection}>
-                    <span style={fpLabel}>Search</span>
-                    <input style={fpInput} placeholder="Product, SKU, site…" value={repSearch} onChange={e => setRepSearch(e.target.value)} />
-                  </div>
-                  <div style={fpSection}>
-                    <span style={fpLabel}>Movement type</span>
-                    {['IN','OUT','DAMAGE','ADJUSTMENT'].map(t => (
-                      <FilterCheck key={t} label={t} checked={repTypes.includes(t)} onChange={() => setRepTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} />
-                    ))}
-                  </div>
-                  <div style={fpSection}>
-                    <span style={fpLabel}>Category</span>
-                    {Array.from(new Set(stockHistory.map(h => h.category).filter(Boolean))).sort().map(cat => (
-                      <FilterCheck key={cat} label={cat} count={repCategoryCounts[cat] || 0} checked={repCategories.includes(cat)} onChange={() => setRepCategories(prev => prev.includes(cat) ? prev.filter(x => x !== cat) : [...prev, cat])} />
-                    ))}
-                  </div>
-                  <div style={fpSection}>
-                    <span style={fpLabel}>Site</span>
-                    <input style={fpInput} placeholder="Search site…" value={repSiteSearch} onChange={e => setRepSiteSearch(e.target.value)} />
-                  </div>
-                  <div style={{ ...fpSection, borderBottom: 'none' }}>
-                    <span style={fpLabel}>Date range</span>
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
-                      {[{label:'7d',days:7},{label:'30d',days:30},{label:'90d',days:90}].map(({label,days}) => (
-                        <button key={label} onClick={() => { const to=new Date(),from=new Date(); from.setDate(from.getDate()-days); setRepDateTo(to.toISOString().slice(0,10)); setRepDateFrom(from.toISOString().slice(0,10)); }} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, border: '0.5px solid rgba(0,0,0,0.12)', background: 'none', cursor: 'pointer', fontFamily: 'inherit', color: 'rgba(0,0,0,0.6)' }}>{label}</button>
+            {/* Date filter bar — shown for all except audit */}
+            {activeReport !== 'audit' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 10, padding: '8px 14px', flexWrap: 'wrap' as const }}>
+                <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>Period</span>
+                {[{ label: 'This month', days: 30 }, { label: '3 months', days: 90 }, { label: '6 months', days: 180 }, { label: 'This year', days: 365 }].map(({ label, days }) => (
+                  <button key={label} onClick={() => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - days); setReportDateFrom(from.toISOString().slice(0,10)); setReportDateTo(to.toISOString().slice(0,10)); }} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, border: '0.5px solid rgba(0,0,0,0.12)', background: 'none', cursor: 'pointer', fontFamily: 'inherit', color: 'rgba(0,0,0,0.6)' }}>{label}</button>
+                ))}
+                <input type="date" value={reportDateFrom} onChange={e => setReportDateFrom(e.target.value)} style={fpInput} />
+                <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.3)' }}>to</span>
+                <input type="date" value={reportDateTo} onChange={e => setReportDateTo(e.target.value)} style={fpInput} />
+                <div style={{ flex: 1 }} />
+                <button onClick={loadCurrentReport} style={btnPrimary}>Apply</button>
+              </div>
+            )}
+
+            {/* Loading spinner */}
+            {reportLoading && <div style={{ textAlign: 'center', padding: 40, color: 'rgba(0,0,0,0.4)', fontSize: 13 }}>Loading…</div>}
+
+            {/* ── COST BY CATEGORY ── */}
+            {!reportLoading && activeReport === 'cost-category' && (
+              <div>
+                {costByCategoryData.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>No data for selected period</div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                      {[
+                        { label: 'Total Spend', value: '$' + costByCategoryData.reduce((s,c) => s + c.total_cost, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+                        { label: 'Categories', value: String(costByCategoryData.length) },
+                        { label: 'Top Category', value: costByCategoryData[0]?.category || '—' },
+                      ].map(m => (
+                        <div key={m.label} style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '12px 20px', minWidth: 140 }}>
+                          <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{m.label}</div>
+                          <div style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>{m.value}</div>
+                        </div>
                       ))}
                     </div>
-                    <input type="date" style={{ ...fpInput, marginBottom: 5 }} value={repDateFrom} onChange={e => setRepDateFrom(e.target.value)} />
-                    <input type="date" style={fpInput} value={repDateTo} onChange={e => setRepDateTo(e.target.value)} />
-                  </div>
-                </div>
-                {/* Right: sort + table + pagination */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={sortBar}>
-                    <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>Sort by</span>
-                    <select value={repSort} onChange={e => setRepSort(e.target.value)} style={{ border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 7, padding: '4px 8px', fontSize: 12, fontFamily: 'inherit', background: 'rgba(0,0,0,0.03)', color: '#0a0a0a', cursor: 'pointer', outline: 'none' }}>
-                      <option value="date-desc">Date — newest</option>
-                      <option value="date-asc">Date — oldest</option>
-                      <option value="qty-desc">Qty — largest first</option>
-                    </select>
-                    <div style={{ flex: 1 }} />
-                    <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)' }}>{filteredHistory.length} movement{filteredHistory.length !== 1 ? 's' : ''}{filteredHistory.length !== stockHistory.length ? ` (filtered from ${stockHistory.length})` : ''}</span>
-                  </div>
-                  <ActiveFilters
-                    chips={[
-                      ...(repSearch ? [{ label: `"${repSearch}"`, key: 'search' }] : []),
-                      ...repTypes.map(t => ({ label: t, key: `type-${t}` })),
-                      ...repCategories.map(c => ({ label: c, key: `cat-${c}` })),
-                      ...(repSiteSearch ? [{ label: `Site: ${repSiteSearch}`, key: 'site' }] : []),
-                      ...(repDateFrom ? [{ label: `From: ${repDateFrom}`, key: 'from' }] : []),
-                      ...(repDateTo ? [{ label: `To: ${repDateTo}`, key: 'to' }] : []),
-                    ]}
-                    onRemove={key => {
-                      if (key === 'search') setRepSearch('');
-                      else if (key.startsWith('type-')) setRepTypes(p => p.filter(t => `type-${t}` !== key));
-                      else if (key.startsWith('cat-')) setRepCategories(p => p.filter(c => `cat-${c}` !== key));
-                      else if (key === 'site') setRepSiteSearch('');
-                      else if (key === 'from') setRepDateFrom('');
-                      else if (key === 'to') setRepDateTo('');
-                    }}
-                    onClearAll={() => { setRepSearch(''); setRepTypes([]); setRepCategories([]); setRepSiteSearch(''); setRepDateFrom(''); setRepDateTo(''); }}
-                  />
-                  {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><CircularProgress /></div> : (
-                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead><tr>{['Date','SKU','Product','Type','Qty','Site','Voucher','Value','Reference'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
+                            <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em', color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>Category</th>
+                            <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em', color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>Total Spend</th>
+                            <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em', color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>Items</th>
+                            <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em', color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>% of Total</th>
+                          </tr>
+                        </thead>
                         <tbody>
-                          {pagedHistory.map(m => {
-                            const isIn = m.movement_type === 'IN' || (m.movement_type === 'ADJUSTMENT' && m.quantity > 0);
-                            const val = m.stock_value ? parseFloat(m.stock_value) : Math.abs(m.quantity) * parseFloat(m.cost || '0');
-                            return (
-                              <tr key={m.id} className="data-row">
-                                <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.5)', whiteSpace: 'nowrap' }}>{new Date(m.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</td>
-                                <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 11, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '2px 6px' }}>{m.sku}</span></td>
-                                <td style={{ ...tdStyle, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.product}</td>
-                                <td style={tdStyle}><MovementBadge type={m.movement_type} /></td>
-                                <td style={{ ...tdStyle, fontWeight: 600, color: isIn ? '#065f46' : '#9f1239' }}>{isIn ? '+' : '−'}{Math.abs(m.quantity)}</td>
-                                <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.6)' }}>{m.site_name || '—'}</td>
-                                <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12 }}>{m.order_number || '—'}</td>
-                                <td style={{ ...tdStyle, fontWeight: 500, color: isIn ? '#065f46' : '#9f1239', textAlign: 'right' }}>${val.toFixed(2)}</td>
-                                <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.4)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.reason || '—'}</td>
-                              </tr>
-                            );
-                          })}
-                          {pagedHistory.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', padding: 48, color: 'rgba(0,0,0,0.3)', fontSize: 13 }}>No movements match your filters</td></tr>}
+                          {(() => {
+                            const grandTotal = costByCategoryData.reduce((s,c) => s + c.total_cost, 0);
+                            return costByCategoryData.map(cat => {
+                              const isExpanded = expandedCategories.has(cat.category);
+                              return (
+                                <>
+                                  <tr key={cat.category} onClick={() => setExpandedCategories(prev => { const n = new Set(prev); if (n.has(cat.category)) n.delete(cat.category); else n.add(cat.category); return n; })} style={{ cursor: 'pointer', borderTop: '0.5px solid rgba(0,0,0,0.06)', background: isExpanded ? 'rgba(0,0,0,0.01)' : undefined }}>
+                                    <td style={{ padding: '11px 16px', fontWeight: 500 }}><span style={{ marginRight: 8, opacity: 0.4 }}>{isExpanded ? '▾' : '▸'}</span>{cat.category}</td>
+                                    <td style={{ padding: '11px 16px', textAlign: 'right', fontWeight: 600 }}>${cat.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td style={{ padding: '11px 16px', textAlign: 'right', color: 'rgba(0,0,0,0.5)' }}>{cat.items.length}</td>
+                                    <td style={{ padding: '11px 16px', textAlign: 'right', color: 'rgba(0,0,0,0.5)' }}>{grandTotal > 0 ? Math.round(cat.total_cost / grandTotal * 100) : 0}%</td>
+                                  </tr>
+                                  {isExpanded && cat.items.map((item: any) => (
+                                    <tr key={item.sku} style={{ background: 'rgba(0,0,0,0.015)', borderTop: '0.5px solid rgba(0,0,0,0.04)' }}>
+                                      <td style={{ padding: '8px 16px 8px 36px', color: 'rgba(0,0,0,0.5)', fontSize: 12 }}>{item.sku}</td>
+                                      <td style={{ padding: '8px 16px', fontSize: 12 }}>{item.product}</td>
+                                      <td style={{ padding: '8px 16px', textAlign: 'right', fontSize: 12 }}>Qty: {Number(item.total_qty).toLocaleString()}</td>
+                                      <td style={{ padding: '8px 16px', textAlign: 'right', fontSize: 12, fontWeight: 500 }}>${Number(item.total_cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                  ))}
+                                </>
+                              );
+                            });
+                          })()}
                         </tbody>
                       </table>
                     </div>
-                  )}
-                  <Pagination page={repPage} totalPages={repTotalPages} onChange={setRepPage} />
-                </div>
+                  </>
+                )}
               </div>
-            ) : (
-              /* Site Analysis — no filter panel, simple table */
+            )}
+
+            {/* ── COST BY SITE ── */}
+            {!reportLoading && activeReport === 'cost-site' && (
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <input type="text" placeholder="Search sites…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ ...inputStyle, width: 240 }} />
-                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)' }}>{filteredTotals.length} sites</span>
+                {costBySiteData.sites.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>No data for selected period</div>
+                ) : (
+                  <>
+                    {(() => {
+                      const top10 = costBySiteData.sites.slice(0, 10);
+                      const maxSpend = Math.max(...top10.map((s: any) => Number(s.total_spend)));
+                      return (
+                        <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.4)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top 10 Sites by Spend</div>
+                          {top10.map((site: any) => (
+                            <div key={site.site_name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                              <div style={{ width: 120, fontSize: 12, color: 'rgba(0,0,0,0.7)', textAlign: 'right', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_name}</div>
+                              <div style={{ flex: 1, background: 'rgba(0,0,0,0.04)', borderRadius: 4, height: 20, position: 'relative' }}>
+                                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${maxSpend > 0 ? Number(site.total_spend) / maxSpend * 100 : 0}%`, background: '#0a0a0a', borderRadius: 4, transition: 'width 0.3s' }} />
+                              </div>
+                              <div style={{ width: 80, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>${Number(site.total_spend).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
+                            {['Site', 'City', 'Orders', 'Total Spend', 'Last Order'].map(h => (
+                              <th key={h} style={{ padding: '10px 16px', textAlign: h === 'Site' || h === 'City' ? 'left' : 'right', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em', color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {costBySiteData.sites.map((site: any) => (
+                            <tr key={site.site_name} style={{ borderTop: '0.5px solid rgba(0,0,0,0.06)' }}>
+                              <td style={{ padding: '10px 16px', fontWeight: 500 }}>{site.site_name}</td>
+                              <td style={{ padding: '10px 16px', color: 'rgba(0,0,0,0.5)' }}>{site.city || '—'}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'right' }}>{site.order_count}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600 }}>${Number(site.total_spend).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'right', color: 'rgba(0,0,0,0.5)' }}>{site.last_order_date ? new Date(site.last_order_date).toLocaleDateString() : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── ORDER FREQUENCY ── */}
+            {!reportLoading && activeReport === 'frequency' && (
+              <div>
+                {orderFrequencyData.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>No data for selected period</div>
+                ) : (
+                  (() => {
+                    const bySite: Record<string, any[]> = {};
+                    for (const row of orderFrequencyData) {
+                      if (!bySite[row.site_name]) bySite[row.site_name] = [];
+                      bySite[row.site_name].push(row);
+                    }
+                    const months = Array.from(new Set(orderFrequencyData.map(r => String(r.month)))).sort().reverse().slice(0, 6);
+                    return (
+                      <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, overflow: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
+                              <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Site</th>
+                              {months.map(m => <th key={m} style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{new Date(m).toLocaleDateString('en', { month: 'short', year: '2-digit' })}</th>)}
+                              <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(bySite).map(([site, rows]) => {
+                              const byMonth: Record<string, number> = {};
+                              rows.forEach(r => { byMonth[String(r.month)] = (byMonth[String(r.month)] || 0) + Number(r.order_count); });
+                              const total = Object.values(byMonth).reduce((s, n) => s + n, 0);
+                              return (
+                                <tr key={site} style={{ borderTop: '0.5px solid rgba(0,0,0,0.06)' }}>
+                                  <td style={{ padding: '10px 16px', fontWeight: 500 }}>{site}</td>
+                                  {months.map(m => {
+                                    const cnt = byMonth[m] || 0;
+                                    const bg = cnt === 0 ? '#fef2f2' : cnt >= 8 ? '#f0fdf4' : cnt >= 3 ? '#fffbeb' : undefined;
+                                    return <td key={m} style={{ padding: '10px 16px', textAlign: 'right', background: bg, fontWeight: cnt > 0 ? 500 : 400, color: cnt === 0 ? '#dc2626' : undefined }}>{cnt || '—'}</td>;
+                                  })}
+                                  <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600 }}>{total}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+            )}
+
+            {/* ── FINANCE PDF ── */}
+            {!reportLoading && activeReport === 'finance' && (
+              <div>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
+                  <input placeholder="Filter by site name…" value={financeSiteFilter} onChange={e => setFinanceSiteFilter(e.target.value)} style={{ ...fpInput, width: 220 }} />
+                  <button onClick={loadCurrentReport} style={btnSecondary}>Load</button>
+                  {financeData.length > 0 && (
+                    <button onClick={() => window.print()} style={btnPrimary} className="no-print">Generate PDF</button>
+                  )}
                 </div>
-                {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><CircularProgress /></div> : (
-                  <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead><tr>{['Code','Site Name','City','Orders','Items Disp.','Total Value','Last Dispatch',''].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                {financeData.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>Select a site and click Load</div>
+                ) : (
+                  (() => {
+                    const byCat: Record<string, any[]> = {};
+                    for (const row of financeData) {
+                      if (!byCat[row.category]) byCat[row.category] = [];
+                      byCat[row.category].push(row);
+                    }
+                    const grandTotal = financeData.reduce((s, r) => s + Number(r.line_total), 0);
+                    const siteName = financeData[0]?.site_name || '';
+                    return (
+                      <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: 32, fontFamily: 'inherit' }} id="finance-print">
+                        <div style={{ borderBottom: '2px solid #0a0a0a', paddingBottom: 16, marginBottom: 20 }}>
+                          <div style={{ fontSize: 20, fontWeight: 700 }}>REDAN — STOCK ALLOCATION REPORT</div>
+                          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.5)', marginTop: 6 }}>
+                            Site: {siteName} &nbsp;|&nbsp; Period: {reportDateFrom} to {reportDateTo} &nbsp;|&nbsp; Date: {new Date().toLocaleDateString()}
+                          </div>
+                        </div>
+                        {Object.entries(byCat).map(([cat, items]) => {
+                          const catTotal = items.reduce((s, r) => s + Number(r.line_total), 0);
+                          return (
+                            <div key={cat} style={{ marginBottom: 24 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, color: '#0a0a0a' }}>{cat}</div>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                <thead>
+                                  <tr style={{ borderBottom: '0.5px solid rgba(0,0,0,0.15)' }}>
+                                    {['SKU', 'Description', 'Qty', 'Unit Cost', 'Total'].map(h => (
+                                      <th key={h} style={{ padding: '6px 8px', textAlign: h === 'SKU' || h === 'Description' ? 'left' : 'right', fontWeight: 600, fontSize: 11, color: 'rgba(0,0,0,0.5)' }}>{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.map((item: any, i: number) => (
+                                    <tr key={i} style={{ borderBottom: '0.5px solid rgba(0,0,0,0.05)' }}>
+                                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{item.sku}</td>
+                                      <td style={{ padding: '6px 8px' }}>{item.item_name}</td>
+                                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Number(item.total_qty).toLocaleString()}</td>
+                                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>${Number(item.unit_cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 500 }}>${Number(item.line_total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr style={{ borderTop: '1px solid rgba(0,0,0,0.15)' }}>
+                                    <td colSpan={4} style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right', textTransform: 'uppercase', fontSize: 11 }}>{cat} Subtotal</td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>${catTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          );
+                        })}
+                        <div style={{ borderTop: '2px solid #0a0a0a', paddingTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700 }}>GRAND TOTAL</div>
+                          <div style={{ fontSize: 18, fontWeight: 700 }}>${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        </div>
+                        <div style={{ marginTop: 40, display: 'flex', gap: 60 }}>
+                          <div><div style={{ borderBottom: '1px solid #0a0a0a', width: 200, marginBottom: 4 }} /><div style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>Account Code</div></div>
+                          <div><div style={{ borderBottom: '1px solid #0a0a0a', width: 200, marginBottom: 4 }} /><div style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>Authorised by</div></div>
+                        </div>
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+            )}
+
+            {/* ── REORDER ALERT ── */}
+            {!reportLoading && activeReport === 'reorder' && (
+              <div>
+                {reorderData.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>No items below reorder level</div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                      {[
+                        { label: 'Items to Reorder', value: String(reorderData.length) },
+                        { label: 'Out of Stock', value: String(reorderData.filter(r => Number(r.current_stock) === 0).length) },
+                        { label: 'Est. Reorder Cost', value: '$' + reorderData.reduce((s, r) => s + (Math.abs(Number(r.stock_vs_reorder)) * Number(r.cost)), 0).toLocaleString(undefined, { maximumFractionDigits: 0 }) },
+                      ].map(m => (
+                        <div key={m.label} style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '12px 20px', minWidth: 140 }}>
+                          <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{m.label}</div>
+                          <div style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>{m.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
+                            {['SKU', 'Product', 'Category', 'Stock', 'Reorder', 'Deficit', 'Days Left'].map(h => (
+                              <th key={h} style={{ padding: '10px 16px', textAlign: h === 'SKU' || h === 'Product' || h === 'Category' ? 'left' : 'right', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em', color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reorderData.map((item: any, i: number) => {
+                            const isOut = Number(item.current_stock) === 0;
+                            return (
+                              <tr key={i} style={{ borderTop: '0.5px solid rgba(0,0,0,0.06)', background: isOut ? '#fef2f2' : '#fffbeb' }}>
+                                <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontSize: 11 }}>{item.sku}</td>
+                                <td style={{ padding: '10px 16px', fontWeight: 500 }}>{item.product}{item.size ? ` (${item.size})` : ''}</td>
+                                <td style={{ padding: '10px 16px', color: 'rgba(0,0,0,0.5)' }}>{item.category}</td>
+                                <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: isOut ? '#dc2626' : '#d97706' }}>{item.current_stock}</td>
+                                <td style={{ padding: '10px 16px', textAlign: 'right' }}>{item.reorder_level}</td>
+                                <td style={{ padding: '10px 16px', textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>{item.stock_vs_reorder}</td>
+                                <td style={{ padding: '10px 16px', textAlign: 'right', color: 'rgba(0,0,0,0.5)' }}>{item.days_until_stockout != null ? `${item.days_until_stockout}d` : '—'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── FORECAST ── */}
+            {!reportLoading && activeReport === 'forecast' && (
+              <div>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' as const }}>
+                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.5)' }}>Lookback:</span>
+                  {[30, 60, 90].map(d => <button key={d} onClick={() => setForecastLookback(d)} style={{ fontSize: 11, padding: '4px 12px', borderRadius: 20, border: forecastLookback === d ? 'none' : '0.5px solid rgba(0,0,0,0.12)', background: forecastLookback === d ? '#0a0a0a' : 'transparent', color: forecastLookback === d ? '#fff' : 'rgba(0,0,0,0.6)', cursor: 'pointer', fontFamily: 'inherit' }}>{d}d</button>)}
+                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.5)', marginLeft: 8 }}>Forecast:</span>
+                  {[14, 30, 60].map(d => <button key={d} onClick={() => setForecastDays(d)} style={{ fontSize: 11, padding: '4px 12px', borderRadius: 20, border: forecastDays === d ? 'none' : '0.5px solid rgba(0,0,0,0.12)', background: forecastDays === d ? '#0a0a0a' : 'transparent', color: forecastDays === d ? '#fff' : 'rgba(0,0,0,0.6)', cursor: 'pointer', fontFamily: 'inherit' }}>{d}d</button>)}
+                  <button onClick={loadCurrentReport} style={btnPrimary}>Generate Forecast</button>
+                  {forecastData.items.length > 0 && <button onClick={() => window.print()} style={btnSecondary} className="no-print">Supplier Order PDF</button>}
+                </div>
+                {forecastData.total_order_value > 0 && (
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                    {[
+                      { label: 'Items to Order', value: String(forecastData.items.length) },
+                      { label: 'Total Order Value', value: '$' + forecastData.total_order_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+                    ].map(m => (
+                      <div key={m.label} style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: '12px 20px', minWidth: 140 }}>
+                        <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{m.label}</div>
+                        <div style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>{m.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {forecastData.items.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>No forecast data — click Generate Forecast</div>
+                ) : (
+                  <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
+                          {['SKU', 'Product', 'Category', 'Stock', `${forecastLookback}d Usage`, `${forecastDays}d Forecast`, 'Order Qty', 'Est. Cost'].map(h => (
+                            <th key={h} style={{ padding: '10px 16px', textAlign: ['SKU','Product','Category'].includes(h) ? 'left' : 'right', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em', color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
                       <tbody>
-                        {filteredTotals.map(total => (
-                          <tr key={total.site_id} className="data-row">
-                            <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 11, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '2px 7px' }}>{total.site_code}</span></td>
-                            <td style={{ ...tdStyle, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(0,0,0,0.2)' }} onClick={() => loadSiteLedger(total)}>{total.site_name}</td>
-                            <td style={{ ...tdStyle, color: 'rgba(0,0,0,0.5)' }}>{total.city}</td>
-                            <td style={{ ...tdStyle, fontWeight: 600, textAlign: 'center' }}>{total.total_orders}</td>
-                            <td style={{ ...tdStyle, textAlign: 'right' }}>{total.total_items_dispatched}</td>
-                            <td style={{ ...tdStyle, fontWeight: 600, textAlign: 'right' }}>${parseFloat(total.total_value_dispatched || '0').toFixed(2)}</td>
-                            <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{total.last_dispatch_date ? new Date(total.last_dispatch_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
-                            <td style={tdStyle}><button onClick={() => loadSiteLedger(total)} style={{ ...btnSecondary, padding: '4px 12px', fontSize: 12 }}>View</button></td>
+                        {forecastData.items.map((item: any, i: number) => (
+                          <tr key={i} style={{ borderTop: '0.5px solid rgba(0,0,0,0.06)' }}>
+                            <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontSize: 11 }}>{item.sku}</td>
+                            <td style={{ padding: '10px 16px', fontWeight: 500 }}>{item.product}{item.size ? ` (${item.size})` : ''}</td>
+                            <td style={{ padding: '10px 16px', color: 'rgba(0,0,0,0.5)' }}>{item.category}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right' }}>{item.current_stock}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right' }}>{Number(item.usage_in_period).toLocaleString()}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right' }}>{Number(item.forecast_demand).toLocaleString()}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700 }}>{Number(item.suggested_order_qty).toLocaleString()}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600 }}>${(Number(item.suggested_order_qty) * Number(item.cost)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           </tr>
                         ))}
-                        {filteredTotals.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 48, color: 'rgba(0,0,0,0.3)', fontSize: 13 }}>No data found</td></tr>}
                       </tbody>
                     </table>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── STOCK VELOCITY ── */}
+            {!reportLoading && activeReport === 'velocity' && (
+              <div>
+                {velocityData.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>No data available</div>
+                ) : (
+                  (['FAST', 'NORMAL', 'SLOW', 'IDLE'] as const).map(vel => {
+                    const items = velocityData.filter(i => i.velocity === vel);
+                    if (items.length === 0) return null;
+                    const headerBg = vel === 'FAST' ? '#f0fdf4' : vel === 'SLOW' ? '#fffbeb' : vel === 'IDLE' ? '#fef2f2' : '#fff';
+                    const headerColor = vel === 'FAST' ? '#166534' : vel === 'SLOW' ? '#92400e' : vel === 'IDLE' ? '#991b1b' : '#0a0a0a';
+                    return (
+                      <div key={vel} style={{ marginBottom: 20, background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, overflow: 'hidden' }}>
+                        <div style={{ background: headerBg, padding: '10px 16px', fontWeight: 700, fontSize: 12, color: headerColor, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                          {vel === 'FAST' ? 'Fast Moving (>20 units/month)' : vel === 'NORMAL' ? 'Normal (5–19 units/month)' : vel === 'SLOW' ? 'Slow Moving (<5 units/month)' : 'Idle (0 units last 30 days)'}
+                          <span style={{ marginLeft: 8, fontWeight: 400, opacity: 0.7 }}>· {items.length} items</span>
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
+                              {['SKU', 'Product', 'Category', '30d Qty', '90d Qty', 'Avg/Day', 'Stock'].map(h => (
+                                <th key={h} style={{ padding: '8px 16px', textAlign: ['SKU','Product','Category'].includes(h) ? 'left' : 'right', fontWeight: 600, fontSize: 10, letterSpacing: '0.05em', color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((item: any, i: number) => (
+                              <tr key={i} style={{ borderTop: '0.5px solid rgba(0,0,0,0.05)' }}>
+                                <td style={{ padding: '8px 16px', fontFamily: 'monospace', fontSize: 11 }}>{item.sku}</td>
+                                <td style={{ padding: '8px 16px', fontWeight: 500 }}>{item.product}{item.size ? ` (${item.size})` : ''}</td>
+                                <td style={{ padding: '8px 16px', color: 'rgba(0,0,0,0.5)' }}>{item.category}</td>
+                                <td style={{ padding: '8px 16px', textAlign: 'right' }}>{Number(item.qty_30_days).toLocaleString()}</td>
+                                <td style={{ padding: '8px 16px', textAlign: 'right' }}>{Number(item.qty_90_days).toLocaleString()}</td>
+                                <td style={{ padding: '8px 16px', textAlign: 'right' }}>{Number(item.avg_daily_usage).toLocaleString()}</td>
+                                <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 600 }}>{Number(item.current_stock).toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* ── MOVEMENT AUDIT ── */}
+            {!reportLoading && activeReport === 'audit' && (
+              <div style={{ display: 'flex', gap: 20 }}>
+                {/* Filter panel */}
+                <div style={filterPanel}>
+                  <div style={fpSection}>
+                    <div style={fpLabel}>Search</div>
+                    <input placeholder="Product, SKU…" value={repSearch} onChange={e => { setRepSearch(e.target.value); setRepPage(1); }} style={fpInput} />
+                  </div>
+                  <div style={fpSection}>
+                    <div style={fpLabel}>Type</div>
+                    {(['IN','OUT','DAMAGE','ADJUSTMENT'] as const).map(t => (
+                      <FilterCheck key={t} label={t} count={stockHistory.filter(h => h.movement_type === t).length} checked={repTypes.includes(t)} onChange={() => { setRepTypes(prev => repTypes.includes(t) ? prev.filter(x => x !== t) : [...prev, t]); setRepPage(1); }} />
+                    ))}
+                  </div>
+                  <div style={fpSection}>
+                    <div style={fpLabel}>Date range</div>
+                    <input type="date" value={repDateFrom} onChange={e => { setRepDateFrom(e.target.value); setRepPage(1); }} style={fpInput} />
+                    <input type="date" value={repDateTo} onChange={e => { setRepDateTo(e.target.value); setRepPage(1); }} style={{ ...fpInput, marginTop: 6 }} />
+                  </div>
+                </div>
+                {/* Table */}
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{filteredHistory.length} movements</span>
+                  </div>
+                  <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
+                          {['Date', 'Product', 'Type', 'Qty', 'Reference', 'Reason', 'By'].map(h => (
+                            <th key={h} style={{ padding: '10px 16px', textAlign: h === 'Qty' ? 'right' : 'left', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em', color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedHistory.length === 0 ? (
+                          <tr><td colSpan={7} style={{ padding: 40, textAlign: 'center', color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>No movements found</td></tr>
+                        ) : pagedHistory.map((h: any, i: number) => (
+                          <tr key={i} style={{ borderTop: '0.5px solid rgba(0,0,0,0.06)' }}>
+                            <td style={{ padding: '9px 16px', color: 'rgba(0,0,0,0.5)', fontSize: 12 }}>{new Date(h.created_at).toLocaleDateString()}</td>
+                            <td style={{ padding: '9px 16px', fontWeight: 500 }}>{h.product || h.sku}</td>
+                            <td style={{ padding: '9px 16px' }}><MovementBadge type={h.movement_type} /></td>
+                            <td style={{ padding: '9px 16px', textAlign: 'right', fontFamily: 'monospace' }}>{h.quantity}</td>
+                            <td style={{ padding: '9px 16px', color: 'rgba(0,0,0,0.5)', fontSize: 12 }}>{h.reference_id || '—'}</td>
+                            <td style={{ padding: '9px 16px', color: 'rgba(0,0,0,0.5)', fontSize: 12, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.reason || '—'}</td>
+                            <td style={{ padding: '9px 16px', color: 'rgba(0,0,0,0.5)', fontSize: 12 }}>{h.created_by || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Pagination page={repPage} totalPages={repTotalPages} onChange={setRepPage} />
+                </div>
               </div>
             )}
           </div>
@@ -2074,6 +2507,20 @@ export default function AdminPage() {
                     </div>
                   )}
                 </div>
+              </div>
+              {/* ORDERZ-REPORTS — Reorder level */}
+              <div style={{ marginTop: 12 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.4)', letterSpacing: '0.06em', textTransform: 'uppercase' as const, display: 'block', marginBottom: 4 }}>Reorder level</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    value={editReorderLevel}
+                    onChange={e => setEditReorderLevel(e.target.value)}
+                    style={{ width: 80, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+                  />
+                  <button onClick={handleSaveReorderLevel} style={btnSecondary}>Save</button>
+                </div>
+                <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', marginTop: 4, marginBottom: 0 }}>Alert when stock falls to or below this level</p>
               </div>
               <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                 <select value={stockViewModal.action} onChange={e=>setStockViewModal(prev=>({...prev,action:e.target.value as 'none'|'add'|'remove'}))} style={selectStyle}>

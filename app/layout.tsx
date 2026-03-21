@@ -1,3 +1,4 @@
+// ORDERZ-REPORTS
 import type { Metadata } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
@@ -28,6 +29,12 @@ export default function RootLayout({
             href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap"
             rel="stylesheet"
           />
+          <style>{`
+            @media print {
+              .no-print { display: none !important; }
+              nav, header { display: none !important; }
+            }
+          `}</style>
         </head>
         <body style={{ fontFamily: "'DM Sans', system-ui, sans-serif", backgroundColor: '#fff', minHeight: '100vh' }}>
           {children}

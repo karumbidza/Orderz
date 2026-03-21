@@ -1,3 +1,4 @@
+// ORDERZ-REPORTS
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { requireAdminAuth } from '@/lib/admin-auth';
@@ -54,7 +55,7 @@ export async function PATCH(request: NextRequest) {
   if (authError2) return authError2;
   try {
     const body = await request.json();
-    const { item_id, cost, is_active } = body;
+    const { item_id, cost, is_active, reorder_level } = body;
 
     if (!item_id) {
       return NextResponse.json({ success: false, error: 'item_id is required' }, { status: 400 });
@@ -84,8 +85,15 @@ export async function PATCH(request: NextRequest) {
         WHERE id = ${item_id}
         RETURNING id, sku, product, cost, is_active
       `;
+    } else if (reorder_level !== undefined) {
+      result = await sql`
+        UPDATE items
+        SET reorder_level = ${reorder_level}, updated_at = NOW()
+        WHERE id = ${item_id}
+        RETURNING id, sku, product, cost, is_active, reorder_level
+      `;
     } else {
-      return NextResponse.json({ success: false, error: 'Nothing to update. Provide cost or is_active' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Nothing to update. Provide cost, is_active, or reorder_level' }, { status: 400 });
     }
 
     if (result.length === 0) {

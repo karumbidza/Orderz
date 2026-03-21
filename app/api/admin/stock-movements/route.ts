@@ -1,3 +1,4 @@
+// ORDERZ-REPORTS
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { requireAdminAuth } from '@/lib/admin-auth';
@@ -116,7 +117,7 @@ export async function GET(request: NextRequest) {
     } else {
       // All movements
       movements = await sql`
-        SELECT 
+        SELECT
           sm.id,
           sm.item_id,
           sm.warehouse_id,
@@ -129,10 +130,13 @@ export async function GET(request: NextRequest) {
           i.sku,
           i.product,
           i.category,
-          w.name as warehouse_name
+          w.name as warehouse_name,
+          COALESCE(s.name, '') as site_name
         FROM stock_movements sm
         JOIN items i ON sm.item_id = i.id
         JOIN warehouses w ON sm.warehouse_id = w.id
+        LEFT JOIN orders ord ON (sm.reference_type = 'ORDER_DISPATCH' AND sm.reference_id = ord.voucher_number)
+        LEFT JOIN sites s ON ord.site_id = s.id
         ORDER BY sm.created_at DESC
         LIMIT ${limit}
       `;
