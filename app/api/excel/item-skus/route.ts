@@ -17,8 +17,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Product is required' }, { status: 400 });
     }
 
-    // Decode + as space (URL query params encode spaces as + in some clients)
+    // Decode + as space, then build a wildcard pattern from individual words.
+    // This handles products like "Maternity Dress + Top" regardless of how
+    // the + sign is encoded in the URL (%2B, literal +, or space).
     const product = decodeURIComponent(rawProduct.replace(/\+/g, '%20')).trim();
+    const searchPattern = '%' +
+      product
+        .replace(/\+/g, ' ')
+        .trim()
+        .split(/\s+/)
+        .join('%') +
+      '%';
 
     // Get all SKUs for this product
     let result;
@@ -26,7 +35,7 @@ export async function GET(request: NextRequest) {
       result = await sql`
         SELECT sku, size, role, cost, unit
         FROM items
-        WHERE product ILIKE ${product}
+        WHERE product ILIKE ${searchPattern}
         AND category ILIKE ${category}
         AND is_active = true
         ORDER BY role, size
@@ -35,7 +44,7 @@ export async function GET(request: NextRequest) {
       result = await sql`
         SELECT sku, size, role, cost, unit
         FROM items
-        WHERE product ILIKE ${product}
+        WHERE product ILIKE ${searchPattern}
         AND is_active = true
         ORDER BY role, size
       `;
