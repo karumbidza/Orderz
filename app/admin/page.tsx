@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useUser, UserButton } from '@clerk/nextjs';
 import {
   Dialog,
@@ -185,6 +185,71 @@ interface DashboardData {
 }
 
 
+// ORDERZ-FILTER — Pagination component
+function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
+  if (totalPages <= 1) return null;
+  const pages: (number | '...')[] = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (page > 3) pages.push('...');
+    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
+    if (page < totalPages - 2) pages.push('...');
+    pages.push(totalPages);
+  }
+  const btnS = (active: boolean): React.CSSProperties => ({
+    width: 28, height: 28, borderRadius: 6,
+    border: active ? 'none' : '0.5px solid rgba(0,0,0,0.1)',
+    background: active ? '#0a0a0a' : 'transparent',
+    color: active ? '#fff' : '#0a0a0a',
+    fontSize: 12, cursor: active ? 'default' : 'pointer',
+    fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  });
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 10, padding: '8px 14px', marginTop: 8 }}>
+      <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>Page {page} of {totalPages}</span>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <button style={btnS(false)} onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1}>‹</button>
+        {pages.map((p, i) =>
+          p === '...'
+            ? <span key={`e${i}`} style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>…</span>
+            : <button key={p} style={btnS(p === page)} onClick={() => onChange(p as number)}>{p}</button>
+        )}
+        <button style={btnS(false)} onClick={() => onChange(Math.min(totalPages, page + 1))} disabled={page === totalPages}>›</button>
+      </div>
+      <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>30 per page</span>
+    </div>
+  );
+}
+
+// ORDERZ-FILTER — Active filter chips
+function ActiveFilters({ chips, onRemove, onClearAll }: { chips: { label: string; key: string }[]; onRemove: (key: string) => void; onClearAll: () => void }) {
+  if (chips.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8, alignItems: 'center' }}>
+      {chips.map(chip => (
+        <span key={chip.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.05)', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 20, padding: '3px 8px 3px 10px', fontSize: 11, color: '#0a0a0a' }}>
+          {chip.label}
+          <button onClick={() => onRemove(chip.key)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: 'rgba(0,0,0,0.4)', lineHeight: 1, fontFamily: 'inherit' }}>×</button>
+        </span>
+      ))}
+      <button onClick={onClearAll} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#e05a5a', fontFamily: 'inherit', padding: '3px 4px' }}>Clear all</button>
+    </div>
+  );
+}
+
+// ORDERZ-FILTER — Checkbox filter option
+function FilterCheck({ label, count, checked, onChange }: { label: string; count?: number; checked: boolean; onChange: () => void }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.7)' }}>
+      <input type="checkbox" checked={checked} onChange={onChange} style={{ accentColor: '#0a0a0a', cursor: 'pointer' }} />
+      <span style={{ flex: 1 }}>{label}</span>
+      {count !== undefined && <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.35)', background: 'rgba(0,0,0,0.04)', borderRadius: 10, padding: '1px 6px' }}>{count}</span>}
+    </label>
+  );
+}
+
 // ─────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────
@@ -312,6 +377,38 @@ export default function AdminPage() {
   };
   const [dateFrom, setDateFrom] = useState<string>(getDefaultDateFrom);
   const [dateTo, setDateTo] = useState<string>(getDefaultDateTo);
+
+  // ORDERZ-FILTER — Orders filter state
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatuses, setOrderStatuses] = useState<string[]>([]);
+  const [orderCategories, setOrderCategories] = useState<string[]>([]);
+  const [orderSiteSearch, setOrderSiteSearch] = useState('');
+  const [orderDateFrom, setOrderDateFrom] = useState('');
+  const [orderDateTo, setOrderDateTo] = useState('');
+  const [orderAmountMin, setOrderAmountMin] = useState('');
+  const [orderAmountMax, setOrderAmountMax] = useState('');
+  const [orderSort, setOrderSort] = useState('date-desc');
+  const [orderPage, setOrderPage] = useState(1);
+  const ORDER_PAGE_SIZE = 30;
+
+  // ORDERZ-FILTER — Inventory filter state
+  const [invSearch, setInvSearch] = useState('');
+  const [invCategories, setInvCategories] = useState<string[]>([]);
+  const [invStockFilter, setInvStockFilter] = useState<'all'|'low'|'out'>('all');
+  const [invSort, setInvSort] = useState('product-asc');
+  const [invPage, setInvPage] = useState(1);
+  const INV_PAGE_SIZE = 30;
+
+  // ORDERZ-FILTER — Reports filter state
+  const [repSearch, setRepSearch] = useState('');
+  const [repTypes, setRepTypes] = useState<string[]>([]);
+  const [repCategories, setRepCategories] = useState<string[]>([]);
+  const [repSiteSearch, setRepSiteSearch] = useState('');
+  const [repDateFrom, setRepDateFrom] = useState('');
+  const [repDateTo, setRepDateTo] = useState('');
+  const [repSort, setRepSort] = useState('date-desc');
+  const [repPage, setRepPage] = useState(1);
+  const REP_PAGE_SIZE = 30;
 
   // Load data functions
   const loadDashboard = async () => {
@@ -1063,37 +1160,166 @@ export default function AdminPage() {
   };
 
   // ─────────────────────────────────────────
-  // FILTERED DATA
+  // FILTERED + SORTED + PAGINATED DATA
+  // ORDERZ-FILTER
   // ─────────────────────────────────────────
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = searchQuery === '' || 
-      order.voucher_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.site_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.site_city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (order.category || '').toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-    const matchesCategory = categoryFilter === 'all' || order.category === categoryFilter;
-    return matchesSearch && matchesStatus && matchesCategory;
-  });
 
-  const filteredStock = stock.filter(item => {
-    const matchesSearch = searchQuery === '' ||
-      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.product.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  // Orders
+  const filteredOrders = useMemo(() => {
+    let result = [...orders];
+    if (orderSearch.trim()) {
+      const q = orderSearch.toLowerCase();
+      result = result.filter(o =>
+        (o.voucher_number || '').toLowerCase().includes(q) ||
+        (o.site_name || '').toLowerCase().includes(q) ||
+        (o.site_city || '').toLowerCase().includes(q)
+      );
+    }
+    if (orderStatuses.length > 0) {
+      result = result.filter(o => orderStatuses.includes(o.status));
+    }
+    if (orderCategories.length > 0) {
+      result = result.filter(o => orderCategories.includes(o.category));
+    }
+    if (orderSiteSearch.trim()) {
+      const q = orderSiteSearch.toLowerCase();
+      result = result.filter(o => (o.site_name || '').toLowerCase().includes(q));
+    }
+    if (orderDateFrom) {
+      result = result.filter(o => o.order_date >= orderDateFrom);
+    }
+    if (orderDateTo) {
+      result = result.filter(o => o.order_date <= orderDateTo + 'T23:59:59');
+    }
+    if (orderAmountMin) {
+      result = result.filter(o => Number(o.total_amount) >= Number(orderAmountMin));
+    }
+    if (orderAmountMax) {
+      result = result.filter(o => Number(o.total_amount) <= Number(orderAmountMax));
+    }
+    result.sort((a, b) => {
+      switch (orderSort) {
+        case 'date-desc': return new Date(b.order_date).getTime() - new Date(a.order_date).getTime();
+        case 'date-asc': return new Date(a.order_date).getTime() - new Date(b.order_date).getTime();
+        case 'total-desc': return Number(b.total_amount) - Number(a.total_amount);
+        case 'total-asc': return Number(a.total_amount) - Number(b.total_amount);
+        case 'site-asc': return (a.site_name || '').localeCompare(b.site_name || '');
+        case 'items-desc': return Number(b.item_count || 0) - Number(a.item_count || 0);
+        default: return 0;
+      }
+    });
+    return result;
+  }, [orders, orderSearch, orderStatuses, orderCategories, orderSiteSearch, orderDateFrom, orderDateTo, orderAmountMin, orderAmountMax, orderSort]);
 
-  // filteredHistory - API now handles category/type/date filtering, just do search here
-  const filteredHistory = stockHistory.filter(movement => {
-    const matchesSearch = searchQuery === '' ||
-      movement.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      movement.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (movement.reason && movement.reason.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (movement.site_name && movement.site_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (movement.order_number && movement.order_number.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesSearch;
-  });
+  useEffect(() => { setOrderPage(1); }, [orderSearch, orderStatuses, orderCategories, orderSiteSearch, orderDateFrom, orderDateTo, orderAmountMin, orderAmountMax, orderSort]);
+
+  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ORDER_PAGE_SIZE));
+  const pagedOrders = filteredOrders.slice((orderPage - 1) * ORDER_PAGE_SIZE, orderPage * ORDER_PAGE_SIZE);
+
+  const orderStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    orders.forEach(o => { counts[o.status] = (counts[o.status] || 0) + 1; });
+    return counts;
+  }, [orders]);
+
+  const orderCategoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    orders.forEach(o => { if (o.category) counts[o.category] = (counts[o.category] || 0) + 1; });
+    return counts;
+  }, [orders]);
+
+  // Inventory
+  const filteredStock = useMemo(() => {
+    let result = [...stock];
+    if (invSearch.trim()) {
+      const q = invSearch.toLowerCase();
+      result = result.filter(s =>
+        (s.product || '').toLowerCase().includes(q) ||
+        (s.sku || '').toLowerCase().includes(q) ||
+        (s.category || '').toLowerCase().includes(q)
+      );
+    }
+    if (invCategories.length > 0) {
+      result = result.filter(s => invCategories.includes(s.category));
+    }
+    if (invStockFilter === 'out') {
+      result = result.filter(s => s.quantity_on_hand <= 0);
+    } else if (invStockFilter === 'low') {
+      result = result.filter(s => s.quantity_on_hand > 0 && s.quantity_on_hand <= 5);
+    }
+    result.sort((a, b) => {
+      switch (invSort) {
+        case 'product-asc': return (a.product || '').localeCompare(b.product || '');
+        case 'stock-desc': return b.quantity_on_hand - a.quantity_on_hand;
+        case 'stock-asc': return a.quantity_on_hand - b.quantity_on_hand;
+        case 'value-desc': return (b.quantity_on_hand * parseFloat(b.cost)) - (a.quantity_on_hand * parseFloat(a.cost));
+        case 'sku-asc': return (a.sku || '').localeCompare(b.sku || '');
+        default: return 0;
+      }
+    });
+    return result;
+  }, [stock, invSearch, invCategories, invStockFilter, invSort]);
+
+  useEffect(() => { setInvPage(1); }, [invSearch, invCategories, invStockFilter, invSort]);
+
+  const invTotalPages = Math.max(1, Math.ceil(filteredStock.length / INV_PAGE_SIZE));
+  const pagedStock = filteredStock.slice((invPage - 1) * INV_PAGE_SIZE, invPage * INV_PAGE_SIZE);
+
+  const invCategoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    stock.forEach(s => { if (s.category) counts[s.category] = (counts[s.category] || 0) + 1; });
+    return counts;
+  }, [stock]);
+
+  // Reports
+  const filteredHistory = useMemo(() => {
+    let result = [...stockHistory];
+    if (repSearch.trim()) {
+      const q = repSearch.toLowerCase();
+      result = result.filter(h =>
+        (h.product || '').toLowerCase().includes(q) ||
+        (h.sku || '').toLowerCase().includes(q) ||
+        (h.site_name || '').toLowerCase().includes(q) ||
+        (h.order_number || '').toLowerCase().includes(q)
+      );
+    }
+    if (repTypes.length > 0) {
+      result = result.filter(h => repTypes.includes(h.movement_type));
+    }
+    if (repCategories.length > 0) {
+      result = result.filter(h => repCategories.includes(h.category));
+    }
+    if (repSiteSearch.trim()) {
+      const q = repSiteSearch.toLowerCase();
+      result = result.filter(h => (h.site_name || '').toLowerCase().includes(q));
+    }
+    if (repDateFrom) {
+      result = result.filter(h => h.created_at >= repDateFrom);
+    }
+    if (repDateTo) {
+      result = result.filter(h => h.created_at <= repDateTo + 'T23:59:59');
+    }
+    result.sort((a, b) => {
+      switch (repSort) {
+        case 'date-desc': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'date-asc': return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'qty-desc': return Math.abs(Number(b.quantity)) - Math.abs(Number(a.quantity));
+        default: return 0;
+      }
+    });
+    return result;
+  }, [stockHistory, repSearch, repTypes, repCategories, repSiteSearch, repDateFrom, repDateTo, repSort]);
+
+  useEffect(() => { setRepPage(1); }, [repSearch, repTypes, repCategories, repSiteSearch, repDateFrom, repDateTo, repSort]);
+
+  const repTotalPages = Math.max(1, Math.ceil(filteredHistory.length / REP_PAGE_SIZE));
+  const pagedHistory = filteredHistory.slice((repPage - 1) * REP_PAGE_SIZE, repPage * REP_PAGE_SIZE);
+
+  const repCategoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    stockHistory.forEach(h => { if (h.category) counts[h.category] = (counts[h.category] || 0) + 1; });
+    return counts;
+  }, [stockHistory]);
 
   const filteredSites = sites.filter(site => {
     const matchesSearch = searchQuery === '' ||
@@ -1142,6 +1368,18 @@ export default function AdminPage() {
   // ─────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────
+    // ORDERZ-FILTER — shared filter styles
+    const filterPanel: React.CSSProperties = {
+      width: 240, flexShrink: 0, background: '#fff',
+      border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14,
+      overflow: 'hidden', alignSelf: 'flex-start',
+      position: 'sticky', top: 72,
+    };
+    const fpSection: React.CSSProperties = { padding: '12px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)' };
+    const fpLabel: React.CSSProperties = { fontSize: 10, fontWeight: 600, color: 'rgba(0,0,0,0.4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, display: 'block' };
+    const fpInput: React.CSSProperties = { width: '100%', background: 'rgba(0,0,0,0.04)', border: '0.5px solid transparent', borderRadius: 7, padding: '6px 10px', fontSize: 12, fontFamily: 'inherit', color: '#0a0a0a', outline: 'none' };
+    const sortBar: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 10, padding: '8px 14px', marginBottom: 8 };
+    const catColor: Record<string, string> = { Uniforms: '#ede9fe', Consumables: '#fef3c7', PPE: '#d1fae5', Stationery: '#dbeafe', Equipment: '#fee2e2', Safety: '#dcfce7' };
   const thStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'rgba(0,0,0,0.4)', letterSpacing: '0.06em', padding: '10px 14px', textAlign: 'left', background: 'rgba(0,0,0,0.02)', borderBottom: '0.5px solid rgba(0,0,0,0.08)' };
   const tdStyle: React.CSSProperties = { fontSize: 13, color: '#0a0a0a', padding: '11px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.05)', verticalAlign: 'middle' };
   const btnPrimary: React.CSSProperties = { background: '#0a0a0a', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' };
@@ -1269,99 +1507,232 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ─── ORDERS ─── */}
+        {/* ─── ORDERS ─── ORDERZ-FILTER */}
         {activeTab === 'orders' && (
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-              <input type="text" placeholder="Search orders…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ ...inputStyle, width: 240 }} />
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={selectStyle}>
-                <option value="all">All Statuses</option>
-                {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={selectStyle}>
-                <option value="all">All Categories</option>
-                {uniqueOrderCategories.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)' }}>{filteredOrders.length} orders</span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 20 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 500, margin: 0 }}>Orders</h1>
+              <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }}>{filteredOrders.length} of {orders.length}</span>
             </div>
-            {loading ? <div style={{ display:'flex', justifyContent:'center', padding:80 }}><CircularProgress /></div> : (
-              <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr>
-                    {['Order #','Category','Site','City','Status','Total','Date','Items',''].map(h => (
-                      <th key={h} style={{ ...thStyle, textAlign: h === 'Total' ? 'right' : 'left' }}>{h}</th>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              {/* Filter panel */}
+              <div style={filterPanel}>
+                <div style={{ padding: '12px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>Filters</span>
+                  <button onClick={() => { setOrderSearch(''); setOrderStatuses([]); setOrderCategories([]); setOrderSiteSearch(''); setOrderDateFrom(''); setOrderDateTo(''); setOrderAmountMin(''); setOrderAmountMax(''); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#378add', cursor: 'pointer', fontFamily: 'inherit' }}>Clear all</button>
+                </div>
+                <div style={fpSection}>
+                  <span style={fpLabel}>Search</span>
+                  <input style={fpInput} placeholder="Order # or site…" value={orderSearch} onChange={e => setOrderSearch(e.target.value)} />
+                </div>
+                <div style={fpSection}>
+                  <span style={fpLabel}>Status</span>
+                  {['PENDING','DISPATCHED','RECEIVED','PARTIAL_DISPATCH','DECLINED'].map(s => (
+                    <FilterCheck key={s} label={s === 'PARTIAL_DISPATCH' ? 'Partial' : s.charAt(0) + s.slice(1).toLowerCase()} count={orderStatusCounts[s] || 0} checked={orderStatuses.includes(s)} onChange={() => setOrderStatuses(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])} />
+                  ))}
+                </div>
+                <div style={fpSection}>
+                  <span style={fpLabel}>Category</span>
+                  {Array.from(new Set(orders.map(o => o.category).filter(Boolean))).sort().map(cat => (
+                    <FilterCheck key={cat} label={cat} count={orderCategoryCounts[cat] || 0} checked={orderCategories.includes(cat)} onChange={() => setOrderCategories(prev => prev.includes(cat) ? prev.filter(x => x !== cat) : [...prev, cat])} />
+                  ))}
+                </div>
+                <div style={fpSection}>
+                  <span style={fpLabel}>Site</span>
+                  <input style={fpInput} placeholder="Search site…" value={orderSiteSearch} onChange={e => setOrderSiteSearch(e.target.value)} />
+                </div>
+                <div style={fpSection}>
+                  <span style={fpLabel}>Date range</span>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                    {[{label:'Today',days:0},{label:'7d',days:7},{label:'30d',days:30}].map(({label,days}) => (
+                      <button key={label} onClick={() => { const to=new Date(),from=new Date(); from.setDate(from.getDate()-days); setOrderDateTo(to.toISOString().slice(0,10)); setOrderDateFrom(from.toISOString().slice(0,10)); }} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, border: '0.5px solid rgba(0,0,0,0.12)', background: 'none', cursor: 'pointer', fontFamily: 'inherit', color: 'rgba(0,0,0,0.6)' }}>{label}</button>
                     ))}
-                  </tr></thead>
-                  <tbody>
-                    {filteredOrders.map(order => (
-                      <tr key={order.id} className="data-row" style={{ cursor: 'pointer' }} onClick={() => viewOrder(order.id)}>
-                        <td style={tdStyle}><span style={{ fontFamily:'monospace', fontSize:11, background:'rgba(0,0,0,0.04)', borderRadius:6, padding:'2px 7px' }}>{order.voucher_number}</span></td>
-                        <td style={{ ...tdStyle, color:'rgba(0,0,0,0.5)' }}>{order.category || '—'}</td>
-                        <td style={{ ...tdStyle, fontWeight:500 }}>{order.site_name}</td>
-                        <td style={{ ...tdStyle, color:'rgba(0,0,0,0.5)' }}>{order.site_city}</td>
-                        <td style={tdStyle}><StatusBadge status={order.status} /></td>
-                        <td style={{ ...tdStyle, fontWeight:600, textAlign:'right' }}>${parseFloat(order.total_amount).toFixed(2)}</td>
-                        <td style={{ ...tdStyle, fontSize:12, color:'rgba(0,0,0,0.4)' }}>{new Date(order.order_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td>
-                        <td style={{ ...tdStyle, textAlign:'center' }}>{order.item_count}</td>
-                        <td style={tdStyle}><button onClick={e=>{e.stopPropagation();viewOrder(order.id);}} style={{...btnSecondary,padding:'4px 12px',fontSize:12}}>View</button></td>
-                      </tr>
-                    ))}
-                    {filteredOrders.length===0 && <tr><td colSpan={9} style={{textAlign:'center',padding:48,color:'rgba(0,0,0,0.3)',fontSize:13}}>No orders found</td></tr>}
-                  </tbody>
-                </table>
+                  </div>
+                  <input type="date" style={{ ...fpInput, marginBottom: 5 }} value={orderDateFrom} onChange={e => setOrderDateFrom(e.target.value)} />
+                  <input type="date" style={fpInput} value={orderDateTo} onChange={e => setOrderDateTo(e.target.value)} />
+                </div>
+                <div style={{ ...fpSection, borderBottom: 'none' }}>
+                  <span style={fpLabel}>Amount ($)</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input style={{ ...fpInput, width: '50%' }} placeholder="Min" type="number" value={orderAmountMin} onChange={e => setOrderAmountMin(e.target.value)} />
+                    <input style={{ ...fpInput, width: '50%' }} placeholder="Max" type="number" value={orderAmountMax} onChange={e => setOrderAmountMax(e.target.value)} />
+                  </div>
+                </div>
               </div>
-            )}
+              {/* Right: sort + table + pagination */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={sortBar}>
+                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>Sort by</span>
+                  <select value={orderSort} onChange={e => setOrderSort(e.target.value)} style={{ border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 7, padding: '4px 8px', fontSize: 12, fontFamily: 'inherit', background: 'rgba(0,0,0,0.03)', color: '#0a0a0a', cursor: 'pointer', outline: 'none' }}>
+                    <option value="date-desc">Date — newest</option>
+                    <option value="date-asc">Date — oldest</option>
+                    <option value="total-desc">Total — high to low</option>
+                    <option value="total-asc">Total — low to high</option>
+                    <option value="site-asc">Site — A to Z</option>
+                    <option value="items-desc">Items — most first</option>
+                  </select>
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)' }}>{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ''}</span>
+                </div>
+                <ActiveFilters
+                  chips={[
+                    ...(orderSearch ? [{ label: `"${orderSearch}"`, key: 'search' }] : []),
+                    ...orderStatuses.map(s => ({ label: s === 'PARTIAL_DISPATCH' ? 'Partial' : s.charAt(0) + s.slice(1).toLowerCase(), key: `status-${s}` })),
+                    ...orderCategories.map(c => ({ label: c, key: `cat-${c}` })),
+                    ...(orderSiteSearch ? [{ label: `Site: ${orderSiteSearch}`, key: 'site' }] : []),
+                    ...(orderDateFrom ? [{ label: `From: ${orderDateFrom}`, key: 'from' }] : []),
+                    ...(orderDateTo ? [{ label: `To: ${orderDateTo}`, key: 'to' }] : []),
+                    ...(orderAmountMin ? [{ label: `Min: $${orderAmountMin}`, key: 'amin' }] : []),
+                    ...(orderAmountMax ? [{ label: `Max: $${orderAmountMax}`, key: 'amax' }] : []),
+                  ]}
+                  onRemove={key => {
+                    if (key === 'search') setOrderSearch('');
+                    else if (key.startsWith('status-')) setOrderStatuses(p => p.filter(s => `status-${s}` !== key));
+                    else if (key.startsWith('cat-')) setOrderCategories(p => p.filter(c => `cat-${c}` !== key));
+                    else if (key === 'site') setOrderSiteSearch('');
+                    else if (key === 'from') setOrderDateFrom('');
+                    else if (key === 'to') setOrderDateTo('');
+                    else if (key === 'amin') setOrderAmountMin('');
+                    else if (key === 'amax') setOrderAmountMax('');
+                  }}
+                  onClearAll={() => { setOrderSearch(''); setOrderStatuses([]); setOrderCategories([]); setOrderSiteSearch(''); setOrderDateFrom(''); setOrderDateTo(''); setOrderAmountMin(''); setOrderAmountMax(''); }}
+                />
+                {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><CircularProgress /></div> : (
+                  <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr>
+                        {['Order #','Site','Category','Status','Total','Date','Items',''].map(h => (
+                          <th key={h} style={{ ...thStyle, textAlign: h === 'Total' ? 'right' : 'left' }}>{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody>
+                        {pagedOrders.map(order => (
+                          <tr key={order.id} className="data-row" style={{ cursor: 'pointer' }} onClick={() => viewOrder(order.id)}>
+                            <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 11, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '2px 7px' }}>{order.voucher_number}</span></td>
+                            <td style={tdStyle}>
+                              <div style={{ fontSize: 13, fontWeight: 500 }}>{order.site_name}</div>
+                              <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', marginTop: 1 }}>{order.site_city}</div>
+                            </td>
+                            <td style={tdStyle}><span style={{ background: catColor[order.category] || '#f3f4f6', color: '#0a0a0a', borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 500 }}>{order.category || '—'}</span></td>
+                            <td style={tdStyle}><StatusBadge status={order.status} /></td>
+                            <td style={{ ...tdStyle, fontWeight: 600, textAlign: 'right' }}>${parseFloat(order.total_amount).toFixed(2)}</td>
+                            <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                            <td style={{ ...tdStyle, textAlign: 'center' }}>{order.item_count}</td>
+                            <td style={tdStyle}><button onClick={e => { e.stopPropagation(); viewOrder(order.id); }} style={{ ...btnSecondary, padding: '4px 12px', fontSize: 12 }}>View</button></td>
+                          </tr>
+                        ))}
+                        {pagedOrders.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 48, color: 'rgba(0,0,0,0.3)', fontSize: 13 }}>No orders match your filters</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <Pagination page={orderPage} totalPages={orderTotalPages} onChange={setOrderPage} />
+              </div>
+            </div>
           </div>
         )}
 
-        {/* ─── INVENTORY ─── */}
+        {/* ─── INVENTORY ─── ORDERZ-FILTER */}
         {activeTab === 'inventory' && (
           <div>
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
-              <input type="text" placeholder="Search products…" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inputStyle,width:240}} />
-              <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={selectStyle}>
-                <option value="all">All Categories</option>
-                {uniqueCategories.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-              <span style={{fontSize:12,color:'rgba(0,0,0,0.35)'}}>{filteredStock.length} items</span>
-              <div style={{flex:1}} />
-              <button onClick={()=>window.open('/api/admin/inventory/export?format=pdf','_blank')} style={btnSecondary}>Export PDF</button>
-              <button onClick={()=>{const a=document.createElement('a');a.href='/api/admin/inventory/export?format=csv';a.download=`inventory-${new Date().toISOString().split('T')[0]}.csv`;a.click();}} style={btnSecondary}>Export CSV</button>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 20 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 500, margin: 0 }}>Inventory</h1>
+              <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }}>{filteredStock.length} of {stock.length}</span>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => window.open('/api/admin/inventory/export?format=pdf', '_blank')} style={btnSecondary}>Export PDF</button>
+              <button onClick={() => { const a = document.createElement('a'); a.href = '/api/admin/inventory/export?format=csv'; a.download = `inventory-${new Date().toISOString().split('T')[0]}.csv`; a.click(); }} style={btnSecondary}>Export CSV</button>
               <button onClick={openBulkReceiveModal} style={btnSecondary}>Bulk Receive</button>
-              <button onClick={()=>setAddProductModal({open:true,mode:'new',submitting:false,product:'',category:'',sku:'',role:'All',size:'',unit:'unit',cost:'0',initialQuantity:'0'})} style={btnPrimary}>+ Add Product</button>
+              <button onClick={() => setAddProductModal({ open: true, mode: 'new', submitting: false, product: '', category: '', sku: '', role: 'All', size: '', unit: 'unit', cost: '0', initialQuantity: '0' })} style={btnPrimary}>+ Add Product</button>
             </div>
-            {loading ? <div style={{display:'flex',justifyContent:'center',padding:80}}><CircularProgress /></div> : (
-              <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.08)',borderRadius:14,overflow:'hidden'}}>
-                <table style={{width:'100%',borderCollapse:'collapse'}}>
-                  <thead><tr>
-                    {['SKU','Product','Size','Category','Stock','Unit Cost','Value',''].map(h=>(
-                      <th key={h} style={{...thStyle, textAlign:h==='Stock'||h==='Unit Cost'||h==='Value'?'right':'left'}}>{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody>
-                    {filteredStock.map(item=>{
-                      const qty=item.quantity_on_hand;
-                      const qtyColor=qty===0?'#9f1239':qty<10?'#92400e':'#065f46';
-                      const qtyBg=qty===0?'#ffe4e6':qty<10?'#fef3c7':'transparent';
-                      const val=qty*parseFloat(item.cost);
-                      return (
-                        <tr key={item.item_id} className="data-row" style={{cursor:'pointer'}} onClick={()=>openStockViewModal(item)}>
-                          <td style={tdStyle}><span style={{fontFamily:'monospace',fontSize:11,background:'rgba(0,0,0,0.04)',borderRadius:6,padding:'2px 7px'}}>{item.sku}</span></td>
-                          <td style={{...tdStyle,fontWeight:500}}>{item.product}</td>
-                          <td style={{...tdStyle,color:'rgba(0,0,0,0.4)'}}>{(item as any).size||'—'}</td>
-                          <td style={{...tdStyle,color:'rgba(0,0,0,0.5)'}}>{item.category}</td>
-                          <td style={{...tdStyle,textAlign:'right'}}><span style={{fontWeight:600,color:qtyColor,background:qtyBg,borderRadius:10,padding:'1px 8px',display:'inline-block'}}>{qty}</span></td>
-                          <td style={{...tdStyle,textAlign:'right',color:'rgba(0,0,0,0.6)'}}>${parseFloat(item.cost).toFixed(2)}</td>
-                          <td style={{...tdStyle,textAlign:'right',fontWeight:600}}>${val.toFixed(2)}</td>
-                          <td style={tdStyle}><button onClick={e=>{e.stopPropagation();openStockViewModal(item);}} style={{...btnSecondary,padding:'4px 12px',fontSize:12}}>View</button></td>
-                        </tr>
-                      );
-                    })}
-                    {filteredStock.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:48,color:'rgba(0,0,0,0.3)',fontSize:13}}>No items found</td></tr>}
-                  </tbody>
-                </table>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              {/* Filter panel */}
+              <div style={filterPanel}>
+                <div style={{ padding: '12px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>Filters</span>
+                  <button onClick={() => { setInvSearch(''); setInvCategories([]); setInvStockFilter('all'); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#378add', cursor: 'pointer', fontFamily: 'inherit' }}>Clear all</button>
+                </div>
+                <div style={fpSection}>
+                  <span style={fpLabel}>Search</span>
+                  <input style={fpInput} placeholder="Product or SKU…" value={invSearch} onChange={e => setInvSearch(e.target.value)} />
+                </div>
+                <div style={fpSection}>
+                  <span style={fpLabel}>Category</span>
+                  {Array.from(new Set(stock.map(s => s.category))).sort().map(cat => (
+                    <FilterCheck key={cat} label={cat} count={invCategoryCounts[cat] || 0} checked={invCategories.includes(cat)} onChange={() => setInvCategories(prev => prev.includes(cat) ? prev.filter(x => x !== cat) : [...prev, cat])} />
+                  ))}
+                </div>
+                <div style={{ ...fpSection, borderBottom: 'none' }}>
+                  <span style={fpLabel}>Stock level</span>
+                  {([['all','All items'],['low','Low (≤ 5)'],['out','Out of stock']] as const).map(([v,l]) => (
+                    <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.7)' }}>
+                      <input type="radio" name="invStock" checked={invStockFilter === v} onChange={() => setInvStockFilter(v)} style={{ accentColor: '#0a0a0a', cursor: 'pointer' }} />
+                      {l}
+                    </label>
+                  ))}
+                </div>
               </div>
-            )}
+              {/* Right: sort + table + pagination */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={sortBar}>
+                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>Sort by</span>
+                  <select value={invSort} onChange={e => setInvSort(e.target.value)} style={{ border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 7, padding: '4px 8px', fontSize: 12, fontFamily: 'inherit', background: 'rgba(0,0,0,0.03)', color: '#0a0a0a', cursor: 'pointer', outline: 'none' }}>
+                    <option value="product-asc">Product A–Z</option>
+                    <option value="stock-desc">Stock — high to low</option>
+                    <option value="stock-asc">Stock — low to high</option>
+                    <option value="value-desc">Value — high to low</option>
+                    <option value="sku-asc">SKU — A to Z</option>
+                  </select>
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)' }}>{filteredStock.length} item{filteredStock.length !== 1 ? 's' : ''}{filteredStock.length !== stock.length ? ` (filtered from ${stock.length})` : ''}</span>
+                </div>
+                <ActiveFilters
+                  chips={[
+                    ...(invSearch ? [{ label: `"${invSearch}"`, key: 'search' }] : []),
+                    ...invCategories.map(c => ({ label: c, key: `cat-${c}` })),
+                    ...(invStockFilter !== 'all' ? [{ label: invStockFilter === 'low' ? 'Low stock' : 'Out of stock', key: 'stock' }] : []),
+                  ]}
+                  onRemove={key => {
+                    if (key === 'search') setInvSearch('');
+                    else if (key.startsWith('cat-')) setInvCategories(p => p.filter(c => `cat-${c}` !== key));
+                    else if (key === 'stock') setInvStockFilter('all');
+                  }}
+                  onClearAll={() => { setInvSearch(''); setInvCategories([]); setInvStockFilter('all'); }}
+                />
+                {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><CircularProgress /></div> : (
+                  <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr>
+                        {['SKU','Product','Size','Category','Stock','Unit Cost','Value',''].map(h => (
+                          <th key={h} style={{ ...thStyle, textAlign: h === 'Stock' || h === 'Unit Cost' || h === 'Value' ? 'right' : 'left' }}>{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody>
+                        {pagedStock.map(item => {
+                          const qty = item.quantity_on_hand;
+                          const qtyColor = qty === 0 ? '#9f1239' : qty < 10 ? '#92400e' : '#065f46';
+                          const qtyBg = qty === 0 ? '#ffe4e6' : qty < 10 ? '#fef3c7' : 'transparent';
+                          const val = qty * parseFloat(item.cost);
+                          return (
+                            <tr key={item.item_id} className="data-row" style={{ cursor: 'pointer' }} onClick={() => openStockViewModal(item)}>
+                              <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 11, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '2px 7px' }}>{item.sku}</span></td>
+                              <td style={{ ...tdStyle, fontWeight: 500 }}>{item.product}</td>
+                              <td style={{ ...tdStyle, color: 'rgba(0,0,0,0.4)' }}>{(item as any).size || '—'}</td>
+                              <td style={{ ...tdStyle, color: 'rgba(0,0,0,0.5)' }}>{item.category}</td>
+                              <td style={{ ...tdStyle, textAlign: 'right' }}><span style={{ fontWeight: 600, color: qtyColor, background: qtyBg, borderRadius: 10, padding: '1px 8px', display: 'inline-block' }}>{qty}</span></td>
+                              <td style={{ ...tdStyle, textAlign: 'right', color: 'rgba(0,0,0,0.6)' }}>${parseFloat(item.cost).toFixed(2)}</td>
+                              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>${val.toFixed(2)}</td>
+                              <td style={tdStyle}><button onClick={e => { e.stopPropagation(); openStockViewModal(item); }} style={{ ...btnSecondary, padding: '4px 12px', fontSize: 12 }}>View</button></td>
+                            </tr>
+                          );
+                        })}
+                        {pagedStock.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 48, color: 'rgba(0,0,0,0.3)', fontSize: 13 }}>No items match your filters</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <Pagination page={invPage} totalPages={invTotalPages} onChange={setInvPage} />
+              </div>
+            </div>
           </div>
         )}
 
@@ -1398,86 +1769,153 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ─── REPORTS ─── */}
+        {/* ─── REPORTS ─── ORDERZ-FILTER */}
         {activeTab === 'reports' && (
           <div>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,flexWrap:'wrap'}}>
-              <div style={{display:'flex',background:'rgba(0,0,0,0.04)',borderRadius:20,padding:3,gap:2}}>
-                {(['movements','site-analysis'] as ReportView[]).map(v=>(
-                  <button key={v} onClick={()=>setReportView(v)} style={{padding:'5px 14px',borderRadius:16,border:'none',cursor:'pointer',fontSize:12,fontFamily:'inherit',background:reportView===v?'#fff':'transparent',color:reportView===v?'#0a0a0a':'rgba(0,0,0,0.5)',boxShadow:reportView===v?'0 1px 3px rgba(0,0,0,0.08)':'none',fontWeight:reportView===v?500:400}}>
-                    {v==='movements'?'Stock Movements':'Site Analysis'}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 20 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 500, margin: 0 }}>Reports</h1>
+              <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }}>{reportView === 'movements' ? `${filteredHistory.length} movements` : `${filteredTotals.length} sites`}</span>
+              <div style={{ flex: 1 }} />
+              {/* Sub-view toggle */}
+              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.04)', borderRadius: 20, padding: 3, gap: 2 }}>
+                {(['movements', 'site-analysis'] as ReportView[]).map(v => (
+                  <button key={v} onClick={() => setReportView(v)} style={{ padding: '5px 14px', borderRadius: 16, border: 'none', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', background: reportView === v ? '#fff' : 'transparent', color: reportView === v ? '#0a0a0a' : 'rgba(0,0,0,0.5)', boxShadow: reportView === v ? '0 1px 3px rgba(0,0,0,0.08)' : 'none', fontWeight: reportView === v ? 500 : 400 }}>
+                    {v === 'movements' ? 'Stock Movements' : 'Site Analysis'}
                   </button>
                 ))}
               </div>
-              <input type="text" placeholder="Search…" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inputStyle,width:180}} />
-              {reportView==='movements'&&(<>
-                <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={selectStyle}>
-                  <option value="all">All Categories</option>
-                  {movementCategories.map(c=><option key={c} value={c}>{c}</option>)}
-                </select>
-                <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} style={selectStyle}>
-                  <option value="all">All Types</option>
-                  <option value="IN">Stock In</option>
-                  <option value="OUT">Stock Out</option>
-                  <option value="DAMAGE">Damage</option>
-                  <option value="ADJUSTMENT">Adjustment</option>
-                </select>
-              </>)}
-              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inputStyle} />
-              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inputStyle} />
-              <button onClick={()=>{if(reportView==='movements')loadStockHistory();else loadSiteTotals();}} style={btnPrimary}>Apply</button>
-              <button onClick={()=>{setDateFrom('');setDateTo('');setTimeout(()=>{if(reportView==='movements')loadStockHistory();else loadSiteTotals();},100);}} style={btnSecondary}>Clear</button>
-              <span style={{fontSize:12,color:'rgba(0,0,0,0.35)'}}>{reportView==='movements'?`${filteredHistory.length} movements`:`${filteredTotals.length} sites`}</span>
-              <div style={{flex:1}} />
-              <button onClick={reportView==='movements'?downloadStockMovementsCSV:downloadSiteAnalysisCSV} style={btnSecondary}>↓ CSV</button>
+              <button onClick={reportView === 'movements' ? downloadStockMovementsCSV : downloadSiteAnalysisCSV} style={btnSecondary}>↓ CSV</button>
             </div>
 
-            {loading ? <div style={{display:'flex',justifyContent:'center',padding:80}}><CircularProgress /></div> : reportView==='movements' ? (
-              <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.08)',borderRadius:14,overflow:'hidden'}}>
-                <table style={{width:'100%',borderCollapse:'collapse'}}>
-                  <thead><tr>{['Date','SKU','Product','Type','Qty','Site','Voucher','Value','Reference'].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {filteredHistory.map(m=>{
-                      const isIn=m.movement_type==='IN'||(m.movement_type==='ADJUSTMENT'&&m.quantity>0);
-                      const val=m.stock_value?parseFloat(m.stock_value):Math.abs(m.quantity)*parseFloat(m.cost||'0');
-                      return (
-                        <tr key={m.id} className="data-row">
-                          <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.5)',whiteSpace:'nowrap'}}>{new Date(m.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</td>
-                          <td style={tdStyle}><span style={{fontFamily:'monospace',fontSize:11,background:'rgba(0,0,0,0.04)',borderRadius:6,padding:'2px 6px'}}>{m.sku}</span></td>
-                          <td style={{...tdStyle,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.product}</td>
-                          <td style={tdStyle}><MovementBadge type={m.movement_type} /></td>
-                          <td style={{...tdStyle,fontWeight:600,color:isIn?'#065f46':'#9f1239'}}>{isIn?'+':'−'}{Math.abs(m.quantity)}</td>
-                          <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.6)'}}>{m.site_name||'—'}</td>
-                          <td style={{...tdStyle,fontFamily:'monospace',fontSize:12}}>{m.order_number||'—'}</td>
-                          <td style={{...tdStyle,fontWeight:500,color:isIn?'#065f46':'#9f1239',textAlign:'right'}}>${val.toFixed(2)}</td>
-                          <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.4)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.reason||'—'}</td>
-                        </tr>
-                      );
-                    })}
-                    {filteredHistory.length===0&&<tr><td colSpan={9} style={{textAlign:'center',padding:48,color:'rgba(0,0,0,0.3)',fontSize:13}}>No movements found</td></tr>}
-                  </tbody>
-                </table>
+            {reportView === 'movements' ? (
+              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                {/* Filter panel */}
+                <div style={filterPanel}>
+                  <div style={{ padding: '12px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>Filters</span>
+                    <button onClick={() => { setRepSearch(''); setRepTypes([]); setRepCategories([]); setRepSiteSearch(''); setRepDateFrom(''); setRepDateTo(''); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#378add', cursor: 'pointer', fontFamily: 'inherit' }}>Clear all</button>
+                  </div>
+                  <div style={fpSection}>
+                    <span style={fpLabel}>Search</span>
+                    <input style={fpInput} placeholder="Product, SKU, site…" value={repSearch} onChange={e => setRepSearch(e.target.value)} />
+                  </div>
+                  <div style={fpSection}>
+                    <span style={fpLabel}>Movement type</span>
+                    {['IN','OUT','DAMAGE','ADJUSTMENT'].map(t => (
+                      <FilterCheck key={t} label={t} checked={repTypes.includes(t)} onChange={() => setRepTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} />
+                    ))}
+                  </div>
+                  <div style={fpSection}>
+                    <span style={fpLabel}>Category</span>
+                    {Array.from(new Set(stockHistory.map(h => h.category).filter(Boolean))).sort().map(cat => (
+                      <FilterCheck key={cat} label={cat} count={repCategoryCounts[cat] || 0} checked={repCategories.includes(cat)} onChange={() => setRepCategories(prev => prev.includes(cat) ? prev.filter(x => x !== cat) : [...prev, cat])} />
+                    ))}
+                  </div>
+                  <div style={fpSection}>
+                    <span style={fpLabel}>Site</span>
+                    <input style={fpInput} placeholder="Search site…" value={repSiteSearch} onChange={e => setRepSiteSearch(e.target.value)} />
+                  </div>
+                  <div style={{ ...fpSection, borderBottom: 'none' }}>
+                    <span style={fpLabel}>Date range</span>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                      {[{label:'7d',days:7},{label:'30d',days:30},{label:'90d',days:90}].map(({label,days}) => (
+                        <button key={label} onClick={() => { const to=new Date(),from=new Date(); from.setDate(from.getDate()-days); setRepDateTo(to.toISOString().slice(0,10)); setRepDateFrom(from.toISOString().slice(0,10)); }} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, border: '0.5px solid rgba(0,0,0,0.12)', background: 'none', cursor: 'pointer', fontFamily: 'inherit', color: 'rgba(0,0,0,0.6)' }}>{label}</button>
+                      ))}
+                    </div>
+                    <input type="date" style={{ ...fpInput, marginBottom: 5 }} value={repDateFrom} onChange={e => setRepDateFrom(e.target.value)} />
+                    <input type="date" style={fpInput} value={repDateTo} onChange={e => setRepDateTo(e.target.value)} />
+                  </div>
+                </div>
+                {/* Right: sort + table + pagination */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={sortBar}>
+                    <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>Sort by</span>
+                    <select value={repSort} onChange={e => setRepSort(e.target.value)} style={{ border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 7, padding: '4px 8px', fontSize: 12, fontFamily: 'inherit', background: 'rgba(0,0,0,0.03)', color: '#0a0a0a', cursor: 'pointer', outline: 'none' }}>
+                      <option value="date-desc">Date — newest</option>
+                      <option value="date-asc">Date — oldest</option>
+                      <option value="qty-desc">Qty — largest first</option>
+                    </select>
+                    <div style={{ flex: 1 }} />
+                    <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)' }}>{filteredHistory.length} movement{filteredHistory.length !== 1 ? 's' : ''}{filteredHistory.length !== stockHistory.length ? ` (filtered from ${stockHistory.length})` : ''}</span>
+                  </div>
+                  <ActiveFilters
+                    chips={[
+                      ...(repSearch ? [{ label: `"${repSearch}"`, key: 'search' }] : []),
+                      ...repTypes.map(t => ({ label: t, key: `type-${t}` })),
+                      ...repCategories.map(c => ({ label: c, key: `cat-${c}` })),
+                      ...(repSiteSearch ? [{ label: `Site: ${repSiteSearch}`, key: 'site' }] : []),
+                      ...(repDateFrom ? [{ label: `From: ${repDateFrom}`, key: 'from' }] : []),
+                      ...(repDateTo ? [{ label: `To: ${repDateTo}`, key: 'to' }] : []),
+                    ]}
+                    onRemove={key => {
+                      if (key === 'search') setRepSearch('');
+                      else if (key.startsWith('type-')) setRepTypes(p => p.filter(t => `type-${t}` !== key));
+                      else if (key.startsWith('cat-')) setRepCategories(p => p.filter(c => `cat-${c}` !== key));
+                      else if (key === 'site') setRepSiteSearch('');
+                      else if (key === 'from') setRepDateFrom('');
+                      else if (key === 'to') setRepDateTo('');
+                    }}
+                    onClearAll={() => { setRepSearch(''); setRepTypes([]); setRepCategories([]); setRepSiteSearch(''); setRepDateFrom(''); setRepDateTo(''); }}
+                  />
+                  {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><CircularProgress /></div> : (
+                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead><tr>{['Date','SKU','Product','Type','Qty','Site','Voucher','Value','Reference'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                        <tbody>
+                          {pagedHistory.map(m => {
+                            const isIn = m.movement_type === 'IN' || (m.movement_type === 'ADJUSTMENT' && m.quantity > 0);
+                            const val = m.stock_value ? parseFloat(m.stock_value) : Math.abs(m.quantity) * parseFloat(m.cost || '0');
+                            return (
+                              <tr key={m.id} className="data-row">
+                                <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.5)', whiteSpace: 'nowrap' }}>{new Date(m.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</td>
+                                <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 11, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '2px 6px' }}>{m.sku}</span></td>
+                                <td style={{ ...tdStyle, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.product}</td>
+                                <td style={tdStyle}><MovementBadge type={m.movement_type} /></td>
+                                <td style={{ ...tdStyle, fontWeight: 600, color: isIn ? '#065f46' : '#9f1239' }}>{isIn ? '+' : '−'}{Math.abs(m.quantity)}</td>
+                                <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.6)' }}>{m.site_name || '—'}</td>
+                                <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12 }}>{m.order_number || '—'}</td>
+                                <td style={{ ...tdStyle, fontWeight: 500, color: isIn ? '#065f46' : '#9f1239', textAlign: 'right' }}>${val.toFixed(2)}</td>
+                                <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.4)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.reason || '—'}</td>
+                              </tr>
+                            );
+                          })}
+                          {pagedHistory.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', padding: 48, color: 'rgba(0,0,0,0.3)', fontSize: 13 }}>No movements match your filters</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <Pagination page={repPage} totalPages={repTotalPages} onChange={setRepPage} />
+                </div>
               </div>
             ) : (
-              <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.08)',borderRadius:14,overflow:'hidden'}}>
-                <table style={{width:'100%',borderCollapse:'collapse'}}>
-                  <thead><tr>{['Code','Site Name','City','Orders','Items Disp.','Total Value','Last Dispatch',''].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {filteredTotals.map(total=>(
-                      <tr key={total.site_id} className="data-row">
-                        <td style={tdStyle}><span style={{fontFamily:'monospace',fontSize:11,background:'rgba(0,0,0,0.04)',borderRadius:6,padding:'2px 7px'}}>{total.site_code}</span></td>
-                        <td style={{...tdStyle,fontWeight:500,cursor:'pointer',textDecoration:'underline',textDecorationColor:'rgba(0,0,0,0.2)'}} onClick={()=>loadSiteLedger(total)}>{total.site_name}</td>
-                        <td style={{...tdStyle,color:'rgba(0,0,0,0.5)'}}>{total.city}</td>
-                        <td style={{...tdStyle,fontWeight:600,textAlign:'center'}}>{total.total_orders}</td>
-                        <td style={{...tdStyle,textAlign:'right'}}>{total.total_items_dispatched}</td>
-                        <td style={{...tdStyle,fontWeight:600,textAlign:'right'}}>${parseFloat(total.total_value_dispatched||'0').toFixed(2)}</td>
-                        <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.4)'}}>{total.last_dispatch_date?new Date(total.last_dispatch_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
-                        <td style={tdStyle}><button onClick={()=>loadSiteLedger(total)} style={{...btnSecondary,padding:'4px 12px',fontSize:12}}>View</button></td>
-                      </tr>
-                    ))}
-                    {filteredTotals.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:48,color:'rgba(0,0,0,0.3)',fontSize:13}}>No data found</td></tr>}
-                  </tbody>
-                </table>
+              /* Site Analysis — no filter panel, simple table */
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <input type="text" placeholder="Search sites…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ ...inputStyle, width: 240 }} />
+                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)' }}>{filteredTotals.length} sites</span>
+                </div>
+                {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><CircularProgress /></div> : (
+                  <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr>{['Code','Site Name','City','Orders','Items Disp.','Total Value','Last Dispatch',''].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {filteredTotals.map(total => (
+                          <tr key={total.site_id} className="data-row">
+                            <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 11, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '2px 7px' }}>{total.site_code}</span></td>
+                            <td style={{ ...tdStyle, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(0,0,0,0.2)' }} onClick={() => loadSiteLedger(total)}>{total.site_name}</td>
+                            <td style={{ ...tdStyle, color: 'rgba(0,0,0,0.5)' }}>{total.city}</td>
+                            <td style={{ ...tdStyle, fontWeight: 600, textAlign: 'center' }}>{total.total_orders}</td>
+                            <td style={{ ...tdStyle, textAlign: 'right' }}>{total.total_items_dispatched}</td>
+                            <td style={{ ...tdStyle, fontWeight: 600, textAlign: 'right' }}>${parseFloat(total.total_value_dispatched || '0').toFixed(2)}</td>
+                            <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{total.last_dispatch_date ? new Date(total.last_dispatch_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
+                            <td style={tdStyle}><button onClick={() => loadSiteLedger(total)} style={{ ...btnSecondary, padding: '4px 12px', fontSize: 12 }}>View</button></td>
+                          </tr>
+                        ))}
+                        {filteredTotals.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 48, color: 'rgba(0,0,0,0.3)', fontSize: 13 }}>No data found</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </div>
