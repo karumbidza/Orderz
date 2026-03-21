@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { neon } from '@neondatabase/serverless';
 import { validateExcelApiKey } from '@/lib/excel-auth';
+
+// Use direct (non-pooled) connection to bypass pooler cache for fresh SKU reads
+const sql = neon(process.env.DIRECT_URL || process.env.DATABASE_URL!);
 
 export const dynamic = 'force-dynamic';
 
