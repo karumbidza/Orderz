@@ -30,8 +30,8 @@ export async function GET(request: NextRequest) {
       FROM stock_movements sm
       JOIN items i ON sm.item_id = i.id
       LEFT JOIN orders ord
-        ON sm.reference_type = 'ORDER_DISPATCH'
-        AND sm.reference_id = ord.voucher_number
+        ON sm.reference_type = 'ORDER'
+        AND sm.reference_id = ord.id::text
       LEFT JOIN sites s ON ord.site_id = s.id
       WHERE sm.movement_type = 'OUT'
         AND sm.created_at::date >= ${dateFrom}::date

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         o.category,
         oi.item_name,
         oi.sku,
-        SUM(oi.quantity) as total_qty,
+        SUM(COALESCE(oi.qty_dispatched, oi.qty_requested, 0)) as total_qty,
         oi.unit_cost,
         SUM(oi.line_total) as line_total
       FROM order_items oi
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       WHERE o.status IN ('RECEIVED','DISPATCHED','PARTIAL_DISPATCH')
         AND o.order_date::date >= ${dateFrom}::date
         AND o.order_date::date <= ${dateTo}::date
-        ${siteFilter ? sql`AND s.name ILIKE ${'%' + siteFilter + '%'}` : sql``}
+        ${siteFilter ? sql`AND s.name = ${siteFilter}` : sql``}
       GROUP BY s.name, s.city, s.address, o.category, oi.item_name, oi.sku, oi.unit_cost
       ORDER BY s.name, o.category, oi.item_name
     `;
