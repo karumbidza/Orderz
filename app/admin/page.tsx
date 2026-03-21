@@ -121,6 +121,8 @@ interface StockItem {
   unit: string;
   cost: string;
   warehouse_name: string;
+  size?: string;
+  is_active?: boolean;
 }
 
 interface StockMovement {
@@ -1342,18 +1344,25 @@ export default function AdminPage() {
   const uniqueStatuses = Array.from(new Set(orders.map(o => o.status)));
   const uniqueProducts = Array.from(new Set(stock.map(s => s.product))).sort();
 
+  // ORDERZ-FILTER
   const generateSku = (productName: string, sizeName: string): string => {
-    const existingItems = stock.filter(s => s.product === productName);
-    if (existingItems.length === 0 || !sizeName) return '';
+    if (!sizeName.trim()) return '';
+    const existingItems = stock.filter(s => s.product === productName && s.is_active);
+    if (existingItems.length === 0) return '';
     const skus = existingItems.map(s => s.sku);
+    const sizeCode = sizeName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    // Find longest common prefix across all SKUs
     let prefix = skus[0];
-    for (const sku of skus) {
+    for (const sku of skus.slice(1)) {
       let i = 0;
       while (i < prefix.length && i < sku.length && prefix[i] === sku[i]) i++;
       prefix = prefix.slice(0, i);
     }
-    const sizeCode = sizeName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
-    return prefix + sizeCode;
+    // Remove trailing dash/underscore/space from prefix
+    prefix = prefix.replace(/[-_\s]+$/, '');
+    // Safety: if prefix < 3 chars, SKUs are inconsistent — let user type manually
+    if (prefix.length < 3) return '';
+    return prefix + '-' + sizeCode;
   };
 
   const handleRefresh = () => {
@@ -2132,10 +2141,33 @@ export default function AdminPage() {
             {addProductModal.mode==='new' ? (
               <TextField label="Product Name" size="small" fullWidth value={addProductModal.product} onChange={e=>setAddProductModal(prev=>({...prev,product:e.target.value}))} />
             ) : (
-              <TextField select label="Select Existing Product" size="small" fullWidth value={addProductModal.product} onChange={e=>{const pName=e.target.value;const ex=stock.find(s=>s.product===pName);setAddProductModal(prev=>({...prev,product:pName,category:ex?.category||prev.category,sku:generateSku(pName,prev.size)}));}} SelectProps={{native:true}}>
-                <option value="">-- Select product --</option>
-                {uniqueProducts.map(p=><option key={p} value={p}>{p}</option>)}
-              </TextField>
+              <>
+                <TextField select label="Select Existing Product" size="small" fullWidth value={addProductModal.product} onChange={e=>{const pName=e.target.value;const ex=stock.find(s=>s.product===pName&&s.is_active);setAddProductModal(prev=>({...prev,product:pName,category:ex?.category||prev.category,sku:generateSku(pName,prev.size)}));}} SelectProps={{native:true}}>
+                  <option value="">-- Select product --</option>
+                  {uniqueProducts.map(p=><option key={p} value={p}>{p}</option>)}
+                </TextField>
+                {addProductModal.product && (()=>{
+                  const existingSizes = stock.filter(s=>s.product===addProductModal.product&&s.is_active&&s.size).map(s=>s.size);
+                  const skuInconsistent = addProductModal.size && generateSku(addProductModal.product, addProductModal.size) === '' && stock.filter(s=>s.product===addProductModal.product&&s.is_active).length > 0;
+                  return (
+                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                      {existingSizes.length > 0 && (
+                        <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:4}}>
+                          <span style={{fontSize:11,color:'rgba(0,0,0,0.45)',fontWeight:500}}>Existing sizes:</span>
+                          {existingSizes.map(sz=>(
+                            <span key={sz} style={{fontSize:11,color:'rgba(0,0,0,0.55)',background:'rgba(0,0,0,0.05)',borderRadius:20,padding:'1px 8px'}}>{sz}</span>
+                          ))}
+                        </div>
+                      )}
+                      {skuInconsistent && (
+                        <div style={{fontSize:11,color:'#92400e',background:'#fef3c7',border:'0.5px solid #fcd34d',borderRadius:8,padding:'6px 10px'}}>
+                          SKU prefixes are inconsistent for this product. Please type the SKU manually.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </>
             )}
             {addProductModal.mode==='add-size' ? (
               <TextField label="Category" size="small" fullWidth value={addProductModal.category} disabled />
