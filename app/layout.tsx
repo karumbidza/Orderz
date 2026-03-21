@@ -9,6 +9,10 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: 'Redan Coupon Admin',
   description: 'Order and Inventory Management System',
+  icons: {
+    icon: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
