@@ -1,6 +1,6 @@
 // ORDERZ-REPORTS
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { neon } from '@neondatabase/serverless';
 import { requireAdminAuth } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
@@ -14,33 +14,101 @@ export async function GET(request: NextRequest) {
     new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10);
   const dateTo = searchParams.get('to') ||
     new Date().toISOString().slice(0,10);
-  const category = searchParams.get('category');
-  const site = searchParams.get('site');
+  const category = searchParams.get('category') || null;
+  const site = searchParams.get('site') || null;
+
+  // Use direct connection — no neon pooler fragment issues
+  const sql = neon(process.env.DATABASE_URL!);
 
   try {
-    const rows = await sql`
-      SELECT
-        i.category,
-        i.product,
-        i.sku,
-        i.unit,
-        SUM(ABS(sm.quantity)) as total_qty,
-        i.cost::numeric as unit_cost,
-        SUM(ABS(sm.quantity)) * i.cost::numeric as total_cost
-      FROM stock_movements sm
-      JOIN items i ON sm.item_id = i.id
-      LEFT JOIN orders ord
-        ON sm.reference_type = 'ORDER'
-        AND sm.reference_id = ord.id::text
-      LEFT JOIN sites s ON ord.site_id = s.id
-      WHERE sm.movement_type = 'OUT'
-        AND sm.created_at::date >= ${dateFrom}::date
-        AND sm.created_at::date <= ${dateTo}::date
-        ${category ? sql`AND i.category = ${category}` : sql``}
-        ${site ? sql`AND s.name ILIKE ${site}` : sql``}
-      GROUP BY i.category, i.product, i.sku, i.unit, i.cost
-      ORDER BY i.category, total_cost DESC
-    `;
+    // Build query with explicit params — avoid nested sql`` fragments
+    let rows: any[];
+
+    if (!category && !site) {
+      rows = await sql`
+        SELECT
+          i.category,
+          i.product,
+          i.sku,
+          i.unit,
+          SUM(ABS(sm.quantity)) as total_qty,
+          i.cost::numeric as unit_cost,
+          SUM(ABS(sm.quantity)) * i.cost::numeric as total_cost
+        FROM stock_movements sm
+        JOIN items i ON sm.item_id = i.id
+        WHERE sm.movement_type = 'OUT'
+          AND sm.created_at::date >= ${dateFrom}::date
+          AND sm.created_at::date <= ${dateTo}::date
+        GROUP BY i.category, i.product, i.sku, i.unit, i.cost
+        ORDER BY i.category, total_cost DESC
+      `;
+    } else if (category && !site) {
+      rows = await sql`
+        SELECT
+          i.category,
+          i.product,
+          i.sku,
+          i.unit,
+          SUM(ABS(sm.quantity)) as total_qty,
+          i.cost::numeric as unit_cost,
+          SUM(ABS(sm.quantity)) * i.cost::numeric as total_cost
+        FROM stock_movements sm
+        JOIN items i ON sm.item_id = i.id
+        WHERE sm.movement_type = 'OUT'
+          AND sm.created_at::date >= ${dateFrom}::date
+          AND sm.created_at::date <= ${dateTo}::date
+          AND i.category = ${category}
+        GROUP BY i.category, i.product, i.sku, i.unit, i.cost
+        ORDER BY i.category, total_cost DESC
+      `;
+    } else if (!category && site) {
+      rows = await sql`
+        SELECT
+          i.category,
+          i.product,
+          i.sku,
+          i.unit,
+          SUM(ABS(sm.quantity)) as total_qty,
+          i.cost::numeric as unit_cost,
+          SUM(ABS(sm.quantity)) * i.cost::numeric as total_cost
+        FROM stock_movements sm
+        JOIN items i ON sm.item_id = i.id
+        LEFT JOIN orders ord
+          ON sm.reference_type = 'ORDER'
+          AND sm.reference_id = ord.id::text
+        LEFT JOIN sites s ON ord.site_id = s.id
+        WHERE sm.movement_type = 'OUT'
+          AND sm.created_at::date >= ${dateFrom}::date
+          AND sm.created_at::date <= ${dateTo}::date
+          AND s.name = ${site}
+        GROUP BY i.category, i.product, i.sku, i.unit, i.cost
+        ORDER BY i.category, total_cost DESC
+      `;
+    } else {
+      rows = await sql`
+        SELECT
+          i.category,
+          i.product,
+          i.sku,
+          i.unit,
+          SUM(ABS(sm.quantity)) as total_qty,
+          i.cost::numeric as unit_cost,
+          SUM(ABS(sm.quantity)) * i.cost::numeric as total_cost
+        FROM stock_movements sm
+        JOIN items i ON sm.item_id = i.id
+        LEFT JOIN orders ord
+          ON sm.reference_type = 'ORDER'
+          AND sm.reference_id = ord.id::text
+        LEFT JOIN sites s ON ord.site_id = s.id
+        WHERE sm.movement_type = 'OUT'
+          AND sm.created_at::date >= ${dateFrom}::date
+          AND sm.created_at::date <= ${dateTo}::date
+          AND i.category = ${category}
+          AND s.name = ${site}
+        GROUP BY i.category, i.product, i.sku, i.unit, i.cost
+        ORDER BY i.category, total_cost DESC
+      `;
+    }
 
     const grouped: Record<string, { category: string; total_cost: number; items: any[] }> = {};
     for (const row of rows) {
@@ -55,7 +123,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: result, period: { from: dateFrom, to: dateTo } });
   } catch (err) {
-    console.error('[cost-by-category] error:', err);
-    return NextResponse.json({ success: false, error: String(err), detail: err instanceof Error ? err.stack : undefined }, { status: 500 });
+    console.error('[cost-by-category]', err);
+    return NextResponse.json(
+      { success: false, error: String(err), detail: err instanceof Error ? err.message : undefined },
+      { status: 500 }
+    );
   }
 }
