@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
   const dateTo = searchParams.get('to') ||
     new Date().toISOString().slice(0,10);
   const category = searchParams.get('category');
+  const site = searchParams.get('site');
 
   try {
     const rows = await sql`
@@ -28,10 +29,15 @@ export async function GET(request: NextRequest) {
         SUM(ABS(sm.quantity)) * i.cost::numeric as total_cost
       FROM stock_movements sm
       JOIN items i ON sm.item_id = i.id
+      LEFT JOIN orders ord
+        ON sm.reference_type = 'ORDER_DISPATCH'
+        AND sm.reference_id = ord.voucher_number
+      LEFT JOIN sites s ON ord.site_id = s.id
       WHERE sm.movement_type = 'OUT'
         AND sm.created_at::date >= ${dateFrom}::date
         AND sm.created_at::date <= ${dateTo}::date
         ${category ? sql`AND i.category = ${category}` : sql``}
+        ${site ? sql`AND s.name ILIKE ${site}` : sql``}
       GROUP BY i.category, i.product, i.sku, i.unit, i.cost
       ORDER BY i.category, total_cost DESC
     `;

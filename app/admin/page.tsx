@@ -431,6 +431,7 @@ export default function AdminPage() {
   const [financeSiteFilter, setFinanceSiteFilter] = useState('');
   const [financeCatFilter, setFinanceCatFilter] = useState(''); // ORDERZ-REPORTS
   const [reportCatFilter, setReportCatFilter] = useState(''); // ORDERZ-REPORTS
+  const [reportSiteFilter, setReportSiteFilter] = useState(''); // ORDERZ-REPORTS
   const [reportSitesList, setReportSitesList] = useState<string[]>([]); // ORDERZ-REPORTS
   const [reportCategoriesList, setReportCategoriesList] = useState<string[]>([]); // ORDERZ-REPORTS
   const [forecastLookback, setForecastLookback] = useState(90);
@@ -1434,6 +1435,7 @@ export default function AdminPage() {
 
       if (activeReport === 'cost-category') {
         if (reportCatFilter) params.set('category', reportCatFilter); // ORDERZ-REPORTS
+        if (reportSiteFilter) params.set('site', reportSiteFilter); // ORDERZ-REPORTS
         const r = await fetch(`/api/admin/reports/cost-by-category?${params}`);
         const d = await r.json();
         if (d.success) setCostByCategoryData(d.data);
@@ -1936,15 +1938,39 @@ export default function AdminPage() {
             {/* ── COST BY CATEGORY ── */}
             {!reportLoading && activeReport === 'cost-category' && (
               <div>
-                {/* ORDERZ-REPORTS — category filter dropdown */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                {/* ORDERZ-REPORTS — category + site filter dropdowns */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' as const }}>
                   <label style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', fontWeight: 500 }}>Category</label>
-                  <select value={reportCatFilter} onChange={e => setReportCatFilter(e.target.value)} style={{ ...fpInput, width: 180, cursor: 'pointer' }}>
+                  <select value={reportCatFilter} onChange={e => setReportCatFilter(e.target.value)} style={{ ...fpInput, width: 170, cursor: 'pointer' }}>
                     <option value="">All categories</option>
                     {reportCategoriesList.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
+                  <label style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', fontWeight: 500, marginLeft: 4 }}>Site</label>
+                  <select value={reportSiteFilter} onChange={e => setReportSiteFilter(e.target.value)} style={{ ...fpInput, width: 180, cursor: 'pointer' }}>
+                    <option value="">All sites</option>
+                    {reportSitesList.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
                   <button onClick={loadCurrentReport} style={btnPrimary}>Apply</button>
-                  {reportCatFilter && <button onClick={() => { setReportCatFilter(''); }} style={btnSecondary}>Clear</button>}
+                  {(reportCatFilter || reportSiteFilter) && (
+                    <button onClick={() => { setReportCatFilter(''); setReportSiteFilter(''); }} style={btnSecondary}>Clear</button>
+                  )}
+                  <div style={{ flex: 1 }} />
+                  {costByCategoryData.length > 0 && (
+                    <button onClick={() => {
+                      // ORDERZ-REPORTS — CSV export: all categories + items
+                      const rows: string[] = ['Category,Product,SKU,Unit,Qty Out,Unit Cost,Total Cost'];
+                      for (const cat of costByCategoryData) {
+                        for (const item of cat.items) {
+                          rows.push([cat.category, item.product, item.sku, item.unit, item.total_qty, Number(item.unit_cost).toFixed(2), Number(item.total_cost).toFixed(2)].join(','));
+                        }
+                        rows.push([cat.category + ' TOTAL', '', '', '', '', '', cat.total_cost.toFixed(2)].join(','));
+                        rows.push('');
+                      }
+                      const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+                      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+                      a.download = `cost-by-category-${reportDateFrom}-to-${reportDateTo}.csv`; a.click();
+                    }} style={btnSecondary}>↓ Download CSV</button>
+                  )}
                 </div>
                 {costByCategoryData.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>No data for selected period</div>
