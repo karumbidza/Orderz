@@ -1677,10 +1677,6 @@ export default function AdminPage() {
                         </button>
                       )}
                     </div>
-                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, padding: '16px 20px' }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Active Sites</div>
-                      <div style={{ fontSize: 28, fontWeight: 600 }}>{dashboardData.sites.active_sites}</div>
-                    </div>
                     <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, padding: '16px 20px', flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Orders by Category</div>
                       {(dashboardData.category_orders || []).slice(0, 6).map((cat: any, i: number) => (
@@ -2819,15 +2815,19 @@ export default function AdminPage() {
             {addProductModal.mode==='add-size' ? (
               <TextField label="Category" size="small" fullWidth value={addProductModal.category} disabled />
             ) : (
-              <TextField select label="Category" size="small" fullWidth value={addProductModal.category} onChange={e=>setAddProductModal(prev=>({...prev,category:e.target.value}))} SelectProps={{native:true}}>
-                <option value="">-- Select category --</option>
-                <option value="Uniforms">Uniforms</option>
-                <option value="Consumables">Consumables</option>
-                <option value="Equipment">Equipment</option>
-                <option value="Stationery">Stationery</option>
-                <option value="Safety">Safety</option>
-                <option value="Other">Other</option>
-              </TextField>
+              <div style={{ position: 'relative' }}>
+                <label style={{ position: 'absolute', top: -9, left: 12, fontSize: 12, color: 'rgba(0,0,0,0.6)', background: '#fff', padding: '0 4px', zIndex: 1, lineHeight: 1 }}>Category</label>
+                <select value={addProductModal.category} onChange={e=>setAddProductModal(prev=>({...prev,category:e.target.value}))} style={{ width: '100%', height: 40, border: '1px solid rgba(0,0,0,0.23)', borderRadius: 4, padding: '0 12px', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: addProductModal.category ? '#0a0a0a' : 'rgba(0,0,0,0.38)', appearance: 'auto', outline: 'none', cursor: 'pointer', boxSizing: 'border-box' }}>
+                  <option value="">-- Select category --</option>
+                  <option value="Uniforms">Uniforms</option>
+                  <option value="Consumables">Consumables</option>
+                  <option value="Equipment">Equipment</option>
+                  <option value="Stationery">Stationery</option>
+                  <option value="PPE">PPE</option>
+                  <option value="Safety">Safety</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
             )}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
               <TextField label="Size (optional)" size="small" value={addProductModal.size} onChange={e=>{const sz=e.target.value;setAddProductModal(prev=>({...prev,size:sz,sku:prev.mode==='add-size'&&prev.product?generateSku(prev.product,sz):prev.sku}));}} />
