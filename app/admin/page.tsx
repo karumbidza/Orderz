@@ -2149,69 +2149,115 @@ export default function AdminPage() {
                   </select>
                   <button onClick={loadCurrentReport} style={btnSecondary}>Load</button>
                   {financeData.length > 0 && (
-                    <button onClick={() => window.print()} style={btnPrimary} className="no-print">Generate PDF</button>
+                    <>
+                      <button onClick={() => window.print()} style={btnPrimary} className="no-print">Generate PDF</button>
+                      <button onClick={() => {
+                        // ORDERZ-REPORTS — CSV export grouped by site + category
+                        const visibleRows = financeCatFilter ? financeData.filter(r => r.category === financeCatFilter) : financeData;
+                        const lines: string[] = ['Site,Category,SKU,Description,Qty,Unit Cost,Total'];
+                        const bySite: Record<string, any[]> = {};
+                        for (const r of visibleRows) { if (!bySite[r.site_name]) bySite[r.site_name] = []; bySite[r.site_name].push(r); }
+                        for (const [site, rows] of Object.entries(bySite)) {
+                          const byCat: Record<string, any[]> = {};
+                          for (const r of rows) { if (!byCat[r.category]) byCat[r.category] = []; byCat[r.category].push(r); }
+                          for (const [cat, items] of Object.entries(byCat)) {
+                            for (const item of items) {
+                              lines.push([`"${site}"`, `"${cat}"`, item.sku, `"${item.item_name}"`, item.total_qty, Number(item.unit_cost).toFixed(2), Number(item.line_total).toFixed(2)].join(','));
+                            }
+                            const catTotal = items.reduce((s: number, r: any) => s + Number(r.line_total), 0);
+                            lines.push([`"${site}"`, `"${cat} TOTAL"`, '', '', '', '', catTotal.toFixed(2)].join(','));
+                          }
+                          const siteTotal = rows.reduce((s: number, r: any) => s + Number(r.line_total), 0);
+                          lines.push([`"${site} TOTAL"`, '', '', '', '', '', siteTotal.toFixed(2)].join(','));
+                          lines.push('');
+                        }
+                        const grandTotal = visibleRows.reduce((s: number, r: any) => s + Number(r.line_total), 0);
+                        lines.push(['GRAND TOTAL', '', '', '', '', '', grandTotal.toFixed(2)].join(','));
+                        const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+                        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+                        a.download = `finance-report-${reportDateFrom}-to-${reportDateTo}.csv`; a.click();
+                      }} style={btnSecondary} className="no-print">↓ Download CSV</button>
+                    </>
                   )}
                 </div>
                 {financeData.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>Select a site and click Load</div>
+                  <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>Select filters and click Load</div>
                 ) : (
                   (() => {
-                    // ORDERZ-REPORTS — apply client-side category filter
-                    const visibleRows = financeCatFilter
-                      ? financeData.filter(r => r.category === financeCatFilter)
-                      : financeData;
-                    const byCat: Record<string, any[]> = {};
-                    for (const row of visibleRows) {
-                      if (!byCat[row.category]) byCat[row.category] = [];
-                      byCat[row.category].push(row);
-                    }
+                    // ORDERZ-REPORTS — group by site → category
+                    const visibleRows = financeCatFilter ? financeData.filter(r => r.category === financeCatFilter) : financeData;
+                    const bySite: Record<string, any[]> = {};
+                    for (const row of visibleRows) { if (!bySite[row.site_name]) bySite[row.site_name] = []; bySite[row.site_name].push(row); }
                     const grandTotal = visibleRows.reduce((s, r) => s + Number(r.line_total), 0);
-                    const siteName = financeData[0]?.site_name || '';
+                    const fmt = (n: number) => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     return (
                       <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: 32, fontFamily: 'inherit' }} id="finance-print">
-                        <div style={{ borderBottom: '2px solid #0a0a0a', paddingBottom: 16, marginBottom: 20 }}>
+                        {/* Report header */}
+                        <div style={{ borderBottom: '2px solid #0a0a0a', paddingBottom: 16, marginBottom: 24 }}>
                           <div style={{ fontSize: 20, fontWeight: 700 }}>REDAN — STOCK ALLOCATION REPORT</div>
                           <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.5)', marginTop: 6 }}>
-                            Site: {siteName} &nbsp;|&nbsp; Period: {reportDateFrom} to {reportDateTo} &nbsp;|&nbsp; Date: {new Date().toLocaleDateString()}
+                            Period: {reportDateFrom} to {reportDateTo} &nbsp;|&nbsp; Generated: {new Date().toLocaleDateString()}
+                            {financeSiteFilter && <> &nbsp;|&nbsp; Site: <strong>{financeSiteFilter}</strong></>}
+                            {financeCatFilter && <> &nbsp;|&nbsp; Category: <strong>{financeCatFilter}</strong></>}
                           </div>
                         </div>
-                        {Object.entries(byCat).map(([cat, items]) => {
-                          const catTotal = items.reduce((s, r) => s + Number(r.line_total), 0);
+
+                        {/* Site sections */}
+                        {Object.entries(bySite).map(([siteName, siteRows]) => {
+                          const byCat: Record<string, any[]> = {};
+                          for (const row of siteRows) { if (!byCat[row.category]) byCat[row.category] = []; byCat[row.category].push(row); }
+                          const siteTotal = siteRows.reduce((s, r) => s + Number(r.line_total), 0);
                           return (
-                            <div key={cat} style={{ marginBottom: 24 }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, color: '#0a0a0a' }}>{cat}</div>
-                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                                <thead>
-                                  <tr style={{ borderBottom: '0.5px solid rgba(0,0,0,0.15)' }}>
-                                    {['SKU', 'Description', 'Qty', 'Unit Cost', 'Total'].map(h => (
-                                      <th key={h} style={{ padding: '6px 8px', textAlign: h === 'SKU' || h === 'Description' ? 'left' : 'right', fontWeight: 600, fontSize: 11, color: 'rgba(0,0,0,0.5)' }}>{h}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {items.map((item: any, i: number) => (
-                                    <tr key={i} style={{ borderBottom: '0.5px solid rgba(0,0,0,0.05)' }}>
-                                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{item.sku}</td>
-                                      <td style={{ padding: '6px 8px' }}>{item.item_name}</td>
-                                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Number(item.total_qty).toLocaleString()}</td>
-                                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>${Number(item.unit_cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 500 }}>${Number(item.line_total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                                <tfoot>
-                                  <tr style={{ borderTop: '1px solid rgba(0,0,0,0.15)' }}>
-                                    <td colSpan={4} style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right', textTransform: 'uppercase', fontSize: 11 }}>{cat} Subtotal</td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>${catTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                  </tr>
-                                </tfoot>
-                              </table>
+                            <div key={siteName} style={{ marginBottom: 36, pageBreakInside: 'avoid' as const }}>
+                              {/* Site header */}
+                              <div style={{ background: '#0a0a0a', color: '#fff', padding: '8px 14px', borderRadius: 8, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.04em' }}>{siteName}</span>
+                                <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.85 }}>{fmt(siteTotal)}</span>
+                              </div>
+
+                              {/* Categories within this site */}
+                              {Object.entries(byCat).map(([cat, items]) => {
+                                const catTotal = items.reduce((s, r) => s + Number(r.line_total), 0);
+                                return (
+                                  <div key={cat} style={{ marginBottom: 20 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em', color: 'rgba(0,0,0,0.5)', marginBottom: 6, paddingLeft: 4 }}>{cat}</div>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                      <thead>
+                                        <tr style={{ borderBottom: '0.5px solid rgba(0,0,0,0.15)' }}>
+                                          {['SKU', 'Description', 'Qty', 'Unit Cost', 'Total'].map(h => (
+                                            <th key={h} style={{ padding: '5px 8px', textAlign: ['Qty','Unit Cost','Total'].includes(h) ? 'right' : 'left', fontWeight: 600, fontSize: 10, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const }}>{h}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {items.map((item: any, i: number) => (
+                                          <tr key={i} style={{ borderBottom: '0.5px solid rgba(0,0,0,0.05)' }}>
+                                            <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontSize: 11, color: 'rgba(0,0,0,0.6)' }}>{item.sku}</td>
+                                            <td style={{ padding: '5px 8px' }}>{item.item_name}</td>
+                                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>{Number(item.total_qty).toLocaleString()}</td>
+                                            <td style={{ padding: '5px 8px', textAlign: 'right', color: 'rgba(0,0,0,0.6)' }}>{fmt(Number(item.unit_cost))}</td>
+                                            <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 500 }}>{fmt(Number(item.line_total))}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                      <tfoot>
+                                        <tr style={{ borderTop: '1px solid rgba(0,0,0,0.12)', background: 'rgba(0,0,0,0.02)' }}>
+                                          <td colSpan={4} style={{ padding: '5px 8px', fontWeight: 600, textAlign: 'right', fontSize: 11, color: 'rgba(0,0,0,0.6)', textTransform: 'uppercase' as const }}>{cat} subtotal</td>
+                                          <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700 }}>{fmt(catTotal)}</td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                );
+                              })}
                             </div>
                           );
                         })}
+
+                        {/* Grand total */}
                         <div style={{ borderTop: '2px solid #0a0a0a', paddingTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                           <div style={{ fontSize: 14, fontWeight: 700 }}>GRAND TOTAL</div>
-                          <div style={{ fontSize: 18, fontWeight: 700 }}>${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                          <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(grandTotal)}</div>
                         </div>
                         <div style={{ marginTop: 40, display: 'flex', gap: 60 }}>
                           <div><div style={{ borderBottom: '1px solid #0a0a0a', width: 200, marginBottom: 4 }} /><div style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>Account Code</div></div>
