@@ -429,6 +429,10 @@ export default function AdminPage() {
   const [forecastData, setForecastData] = useState<{items: any[]; total_order_value: number}>({ items: [], total_order_value: 0 });
   const [velocityData, setVelocityData] = useState<any[]>([]);
   const [financeSiteFilter, setFinanceSiteFilter] = useState('');
+  const [financeCatFilter, setFinanceCatFilter] = useState(''); // ORDERZ-REPORTS
+  const [reportCatFilter, setReportCatFilter] = useState(''); // ORDERZ-REPORTS
+  const [reportSitesList, setReportSitesList] = useState<string[]>([]); // ORDERZ-REPORTS
+  const [reportCategoriesList, setReportCategoriesList] = useState<string[]>([]); // ORDERZ-REPORTS
   const [forecastLookback, setForecastLookback] = useState(90);
   const [forecastDays, setForecastDays] = useState(30);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -594,6 +598,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === 'reports') {
       loadCurrentReport();
+      if (reportSitesList.length === 0) loadReportDropdowns();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeReport, activeTab]);
@@ -1405,12 +1410,30 @@ export default function AdminPage() {
   };
 
   // ORDERZ-REPORTS
+  // ORDERZ-REPORTS — fetch sites + categories for report filter dropdowns
+  const loadReportDropdowns = async () => {
+    try {
+      const [sRes, cRes] = await Promise.all([
+        fetch('/api/sites?limit=500'),
+        fetch('/api/admin/inventory?limit=1000'),
+      ]);
+      const sData = await sRes.json();
+      const cData = await cRes.json();
+      if (sData.success) setReportSitesList(sData.data.map((s: any) => s.name as string).sort());
+      if (cData.success) {
+        const cats = Array.from(new Set(cData.data.map((i: any) => i.category as string))).sort() as string[];
+        setReportCategoriesList(cats);
+      }
+    } catch { /* silent */ }
+  };
+
   const loadCurrentReport = async () => {
     setReportLoading(true);
     try {
       const params = new URLSearchParams({ from: reportDateFrom, to: reportDateTo });
 
       if (activeReport === 'cost-category') {
+        if (reportCatFilter) params.set('category', reportCatFilter); // ORDERZ-REPORTS
         const r = await fetch(`/api/admin/reports/cost-by-category?${params}`);
         const d = await r.json();
         if (d.success) setCostByCategoryData(d.data);
@@ -1913,6 +1936,16 @@ export default function AdminPage() {
             {/* ── COST BY CATEGORY ── */}
             {!reportLoading && activeReport === 'cost-category' && (
               <div>
+                {/* ORDERZ-REPORTS — category filter dropdown */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <label style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', fontWeight: 500 }}>Category</label>
+                  <select value={reportCatFilter} onChange={e => setReportCatFilter(e.target.value)} style={{ ...fpInput, width: 180, cursor: 'pointer' }}>
+                    <option value="">All categories</option>
+                    {reportCategoriesList.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <button onClick={loadCurrentReport} style={btnPrimary}>Apply</button>
+                  {reportCatFilter && <button onClick={() => { setReportCatFilter(''); }} style={btnSecondary}>Clear</button>}
+                </div>
                 {costByCategoryData.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>No data for selected period</div>
                 ) : (
@@ -2076,8 +2109,18 @@ export default function AdminPage() {
             {/* ── FINANCE PDF ── */}
             {!reportLoading && activeReport === 'finance' && (
               <div>
-                <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
-                  <input placeholder="Filter by site name…" value={financeSiteFilter} onChange={e => setFinanceSiteFilter(e.target.value)} style={{ ...fpInput, width: 220 }} />
+                {/* ORDERZ-REPORTS — site + category dropdowns */}
+                <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' as const }}>
+                  <label style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', fontWeight: 500 }}>Site</label>
+                  <select value={financeSiteFilter} onChange={e => setFinanceSiteFilter(e.target.value)} style={{ ...fpInput, width: 200, cursor: 'pointer' }}>
+                    <option value="">All sites</option>
+                    {reportSitesList.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <label style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', fontWeight: 500, marginLeft: 8 }}>Category</label>
+                  <select value={financeCatFilter} onChange={e => setFinanceCatFilter(e.target.value)} style={{ ...fpInput, width: 160, cursor: 'pointer' }}>
+                    <option value="">All categories</option>
+                    {reportCategoriesList.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                   <button onClick={loadCurrentReport} style={btnSecondary}>Load</button>
                   {financeData.length > 0 && (
                     <button onClick={() => window.print()} style={btnPrimary} className="no-print">Generate PDF</button>
@@ -2087,12 +2130,16 @@ export default function AdminPage() {
                   <div style={{ textAlign: 'center', padding: 60, color: 'rgba(0,0,0,0.35)', fontSize: 13 }}>Select a site and click Load</div>
                 ) : (
                   (() => {
+                    // ORDERZ-REPORTS — apply client-side category filter
+                    const visibleRows = financeCatFilter
+                      ? financeData.filter(r => r.category === financeCatFilter)
+                      : financeData;
                     const byCat: Record<string, any[]> = {};
-                    for (const row of financeData) {
+                    for (const row of visibleRows) {
                       if (!byCat[row.category]) byCat[row.category] = [];
                       byCat[row.category].push(row);
                     }
-                    const grandTotal = financeData.reduce((s, r) => s + Number(r.line_total), 0);
+                    const grandTotal = visibleRows.reduce((s, r) => s + Number(r.line_total), 0);
                     const siteName = financeData[0]?.site_name || '';
                     return (
                       <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 12, padding: 32, fontFamily: 'inherit' }} id="finance-print">
