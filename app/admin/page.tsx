@@ -446,10 +446,15 @@ export default function AdminPage() {
       const params = new URLSearchParams();
       if (dateFrom) params.append('dateFrom', dateFrom);
       if (dateTo) params.append('dateTo', dateTo);
-      const res = await fetch(`/api/admin/dashboard?${params.toString()}`);
-      const data = await res.json();
+      const [dashRes, reorderRes] = await Promise.all([
+        fetch(`/api/admin/dashboard?${params.toString()}`),
+        fetch('/api/admin/reports/reorder'),
+      ]);
+      const data = await dashRes.json();
       if (data.success) setDashboardData(data.data);
       else showMessage('Error: ' + data.error, 'error');
+      const reorderJson = await reorderRes.json();
+      if (reorderJson.success) setReorderData(reorderJson.items || []);
     } catch {
       showMessage('Failed to load dashboard', 'error');
     }
@@ -1498,6 +1503,25 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteItem = async () => {
+    if (!stockViewModal.item) return;
+    const { sku, product, item_id } = stockViewModal.item;
+    if (!window.confirm(`Deactivate "${product}" (${sku})?\n\nThis will hide it from inventory and Excel. Stock history is preserved.`)) return;
+    try {
+      const res = await fetch(`/api/admin/inventory?item_id=${item_id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        showMessage(`${sku} deactivated`, 'success');
+        setStockViewModal({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '', editingCost: false, newCost: '' });
+        loadStock();
+      } else {
+        showMessage('Error: ' + data.error, 'error');
+      }
+    } catch {
+      showMessage('Failed to delete item', 'error');
+    }
+  };
+
   // ─────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────
@@ -1620,6 +1644,39 @@ export default function AdminPage() {
                       ))}
                       {dashboardData.low_stock.items.length === 0 && <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.3)' }}>All stocked up!</div>}
                     </div>
+                    {/* Reorder Alert card */}
+                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, padding: '16px 20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>Reorder Alert</div>
+                        {reorderData.length > 0 && (
+                          <span style={{ fontSize: 11, fontWeight: 600, background: '#fef2f2', color: '#dc2626', borderRadius: 10, padding: '2px 8px' }}>
+                            {reorderData.length} item{reorderData.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      {reorderData.length === 0 ? (
+                        <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.3)' }}>All items above reorder level</div>
+                      ) : (
+                        reorderData.slice(0, 5).map((item: any, i: number) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: i < Math.min(reorderData.length, 5) - 1 ? '0.5px solid rgba(0,0,0,0.05)' : 'none' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.product}{item.size ? ` (${item.size})` : ''}</div>
+                              <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)' }}>{item.sku}</div>
+                            </div>
+                            <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 8 }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: Number(item.current_stock) === 0 ? '#9f1239' : '#b45309', background: Number(item.current_stock) === 0 ? '#ffe4e6' : '#fef3c7', borderRadius: 10, padding: '1px 8px' }}>
+                                {item.current_stock} / {item.reorder_level}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {reorderData.length > 5 && (
+                        <button onClick={() => { setActiveTab('reports'); setActiveReport('reorder'); }} style={{ fontSize: 11, color: '#378add', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0 0', fontFamily: 'inherit' }}>
+                          +{reorderData.length - 5} more → View all
+                        </button>
+                      )}
+                    </div>
                     <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, padding: '16px 20px' }}>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Active Sites</div>
                       <div style={{ fontSize: 28, fontWeight: 600 }}>{dashboardData.sites.active_sites}</div>
@@ -1629,7 +1686,7 @@ export default function AdminPage() {
                       {(dashboardData.category_orders || []).slice(0, 6).map((cat: any, i: number) => (
                         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '0.5px solid rgba(0,0,0,0.04)' }}>
                           <span style={{ fontSize: 12 }}>{cat.category}</span>
-                          <span style={{ fontSize: 12, fontWeight: 500, color: 'rgba(0,0,0,0.5)' }}>{cat.count || cat.total_orders || 0}</span>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: 'rgba(0,0,0,0.5)' }}>{cat.order_count || 0}</span>
                         </div>
                       ))}
                     </div>
@@ -2626,6 +2683,7 @@ export default function AdminPage() {
                 <div style={{fontFamily:'monospace',fontSize:13,fontWeight:600}}>{stockViewModal.item.sku}</div>
                 <div style={{fontSize:12,color:'rgba(0,0,0,0.4)'}}>{stockViewModal.item.product}{(stockViewModal.item as any).size?` · ${(stockViewModal.item as any).size}`:''}</div>
               </div>
+              <button onClick={handleDeleteItem} style={{fontSize:12,color:'#dc2626',background:'#fef2f2',border:'0.5px solid #fecaca',borderRadius:7,padding:'5px 12px',cursor:'pointer',fontFamily:'inherit',fontWeight:500}}>Delete</button>
               <div style={{textAlign:'right'}}>
                 <div style={{fontSize:22,fontWeight:600,color:stockViewModal.item.quantity_on_hand===0?'#9f1239':stockViewModal.item.quantity_on_hand<10?'#92400e':'#0a0a0a'}}>{stockViewModal.item.quantity_on_hand}</div>
                 <div style={{fontSize:11,color:'rgba(0,0,0,0.35)'}}>on hand</div>
