@@ -753,6 +753,10 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success) {
         showMessage(data.message, 'success');
+        // ORDERZ-ORDERVIEW — open dispatch note in new tab
+        if (orderModal.order) {
+          window.open(`/api/admin/orders/${orderModal.order.id}/dispatch-note`, '_blank');
+        }
         setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
         loadOrders();
       } else {
@@ -2586,6 +2590,25 @@ export default function AdminPage() {
                     </>
                   )}
                 </>
+              )}
+              {/* ORDERZ-ORDERVIEW — View/Print order */}
+              <a
+                href={`/api/excel/order-view/${orderModal.order?.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 16px',background:'transparent',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:8,fontSize:13,color:'#0a0a0a',textDecoration:'none',cursor:'pointer'}}
+              >
+                &#8599; View Order
+              </a>
+              {(orderModal.order?.status === 'DISPATCHED' || orderModal.order?.status === 'PARTIAL_DISPATCH' || orderModal.order?.status === 'RECEIVED') && (
+                <a
+                  href={`/api/admin/orders/${orderModal.order?.id}/dispatch-note`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 16px',background:'transparent',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:8,fontSize:13,color:'#0a0a0a',textDecoration:'none'}}
+                >
+                  &#8595; Dispatch Note
+                </a>
               )}
             </div>
           </div>

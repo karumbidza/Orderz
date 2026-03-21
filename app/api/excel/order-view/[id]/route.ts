@@ -1,375 +1,317 @@
-import { NextRequest } from 'next/server';
-import { sql } from '@/lib/db';
-import { validateExcelApiKey } from '@/lib/excel-auth';
+// ORDERZ-ORDERVIEW
+import { NextRequest, NextResponse } from 'next/server';
+import { neon } from '@neondatabase/serverless';
 
 export const dynamic = 'force-dynamic';
 
-// ─────────────────────────────────────────────
-// GET /api/excel/order-view/[id] - View order as printable HTML
-// This can be opened in browser and printed/saved as PDF
-// ─────────────────────────────────────────────
+// NO AUTH — public URL, order ID is the access token
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // ORDERZ-SEC
-  const authError = validateExcelApiKey(request);
-  if (authError) return authError;
+  const sql = neon(process.env.DATABASE_URL!);
   try {
     const { id } = await params;
     const orderId = parseInt(id);
-    
     if (isNaN(orderId)) {
-      return new Response('Invalid order ID', { status: 400 });
+      return new NextResponse('Order not found', { status: 404 });
     }
-    
-    // Get order with site details
-    // Note: sites table also has 'status' column, so we alias o.status to avoid collision
-    const orders = await sql`
-      SELECT 
-        o.id,
-        o.voucher_number,
-        o.category,
-        o.status as order_status,
-        o.total_amount,
-        o.order_date,
-        o.requested_by,
-        o.notes,
-        o.decline_reason,
-        o.dispatched_at,
-        o.dispatched_by,
-        o.received_at,
-        o.received_by,
-        s.name as site_name,
-        s.site_code,
-        s.address,
-        s.city,
-        s.email,
-        s.phone,
-        s.contact_name
-      FROM orders o
-      JOIN sites s ON o.site_id = s.id
-      WHERE o.id = ${orderId}
-    `;
-    
+
+    const [orders, items] = await Promise.all([
+      sql`
+        SELECT
+          o.id,
+          o.voucher_number,
+          o.category,
+          o.status AS order_status,
+          o.total_amount,
+          o.order_date,
+          o.requested_by,
+          o.notes,
+          o.dispatched_at,
+          o.dispatched_by,
+          o.received_at,
+          o.received_by,
+          o.decline_reason,
+          o.updated_at,
+          s.name AS site_name,
+          s.site_code,
+          s.city,
+          s.address,
+          s.phone,
+          s.email,
+          s.contact_name
+        FROM orders o
+        LEFT JOIN sites s ON o.site_id = s.id
+        WHERE o.id = ${orderId}
+        LIMIT 1
+      `,
+      sql`
+        SELECT
+          oi.id,
+          oi.sku,
+          oi.item_name,
+          oi.size,
+          oi.qty_requested,
+          oi.qty_approved,
+          oi.qty_dispatched,
+          oi.unit_cost,
+          oi.line_total
+        FROM order_items oi
+        WHERE oi.order_id = ${orderId}
+        ORDER BY oi.item_name
+      `,
+    ]);
+
     if (orders.length === 0) {
-      return new Response('Order not found', { status: 404 });
+      return new NextResponse('Order not found', { status: 404 });
     }
-    
-    // Map order_status back to status (sites table also has status column causing collision)
-    const orderRow = orders[0] as any;
-    const order = { ...orderRow, status: orderRow.order_status };
-    
-    // Get order items with dispatch info
-    const items = await sql`
-      SELECT 
-        oi.sku,
-        oi.item_name,
-        oi.size,
-        oi.qty_requested,
-        oi.qty_approved,
-        oi.qty_dispatched,
-        oi.unit_cost,
-        oi.line_total
-      FROM order_items oi
-      WHERE oi.order_id = ${orderId}
-      ORDER BY oi.id
-    `;
-    
-    // Generate HTML
-    const html = `
-<!DOCTYPE html>
-<html>
+
+    const order = { ...(orders[0] as Record<string, unknown>), status: (orders[0] as Record<string, unknown>).order_status as string } as Record<string, unknown>;
+    const orderItems = items as Record<string, unknown>[];
+
+    const formatDate = (d: unknown): string => {
+      if (!d) return '—';
+      try {
+        return new Date(d as string).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        });
+      } catch {
+        return String(d);
+      }
+    };
+
+    const statusMap: Record<string, { label: string; color: string; bg: string }> = {
+      PENDING: { label: 'Pending', color: '#92400e', bg: '#fef3c7' },
+      PROCESSING: { label: 'Processing', color: '#1e40af', bg: '#dbeafe' },
+      DISPATCHED: { label: 'Dispatched', color: '#1e40af', bg: '#dbeafe' },
+      PARTIAL_DISPATCH: { label: 'Partially Dispatched', color: '#5b21b6', bg: '#ede9fe' },
+      RECEIVED: { label: 'Received', color: '#065f46', bg: '#d1fae5' },
+      DECLINED: { label: 'Declined', color: '#9f1239', bg: '#ffe4e6' },
+    };
+
+    const orderStatus = order.status as string;
+    const status =
+      statusMap[orderStatus] ?? {
+        label: orderStatus,
+        color: '#374151',
+        bg: '#f3f4f6',
+      };
+    const canMarkReceived =
+      orderStatus === 'DISPATCHED' || orderStatus === 'PARTIAL_DISPATCH';
+
+    const itemRows = orderItems
+      .map((item) => {
+        const qty =
+          (item.qty_dispatched as number) ??
+          (item.qty_approved as number) ??
+          (item.qty_requested as number) ??
+          0;
+        return `
+      <tr>
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;font-family:monospace;color:rgba(0,0,0,0.6)">${item.sku ?? '&mdash;'}</td>
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px">${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(0,0,0,0.4);font-size:11px">${item.size}</span>` : ''}</td>
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:center">${qty}</td>
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:right">${Number(item.unit_cost ?? 0).toFixed(2)}</td>
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:right;font-weight:500">${Number(item.line_total ?? 0).toFixed(2)}</td>
+      </tr>`;
+      })
+      .join('');
+
+    const cityAddress = [order.city, order.address].filter(Boolean).join(' &middot; ');
+    const phoneEmail = [order.phone, order.email].filter(Boolean).join(' &middot; ');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Order ${order.voucher_number}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order ${order.voucher_number ?? '#' + String(order.id)} &mdash; Redan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
-    .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #006633; padding-bottom: 20px; }
-    .header h1 { color: #006633; font-size: 24px; }
-    .header h2 { color: #333; font-size: 18px; margin-top: 5px; }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
-    .info-box { background: #f5f5f5; padding: 15px; border-radius: 5px; }
-    .info-box h3 { color: #006633; margin-bottom: 10px; font-size: 14px; }
-    .info-box p { margin: 5px 0; font-size: 13px; }
-    .info-box .label { color: #666; }
-    .info-box .value { font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    th { background: #006633; color: white; padding: 10px; text-align: left; font-size: 13px; }
-    td { padding: 10px; border-bottom: 1px solid #ddd; font-size: 13px; }
-    tr:nth-child(even) { background: #f9f9f9; }
-    .total-row { font-weight: bold; background: #e8f5e9 !important; }
-    .total-row td { border-top: 2px solid #006633; }
-    .status { display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 12px; }
-    .status-PENDING { background: #fff3cd; color: #856404; }
-    .status-PARTIAL_DISPATCH { background: #ffe0b2; color: #e65100; }
-    .status-DISPATCHED { background: #cce5ff; color: #004085; }
-    .status-RECEIVED { background: #d4edda; color: #155724; }
-    .status-DECLINED { background: #f8d7da; color: #721c24; }
-    .pending-row { background: #fff3cd !important; }
-    .complete-row { background: #e8f5e9 !important; }
-    .adjusted-row { background: #e3f2fd !important; }
-    .dispatch-summary { margin-top: 20px; padding: 15px; background: #fff8e1; border: 2px solid #ff9800; border-radius: 5px; }
-    .dispatch-summary h4 { color: #e65100; margin-bottom: 10px; }
-    .decline-notice { margin-top: 20px; padding: 15px; background: #f8d7da; border: 2px solid #dc3545; border-radius: 5px; }
-    .decline-notice h4 { color: #721c24; margin-bottom: 10px; }
-    .adjustment-notice { margin-top: 20px; padding: 15px; background: #e3f2fd; border: 2px solid #2196f3; border-radius: 5px; }
-    .adjustment-notice h4 { color: #1565c0; margin-bottom: 10px; }
-    .adjustment-notice ul { margin: 10px 0 0 20px; }
-    .footer { margin-top: 30px; text-align: center; color: #666; font-size: 11px; }
-    .receive-btn { padding: 10px 30px; background: #2196f3; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-left: 10px; }
-    .receive-btn:hover { background: #1976d2; }
-    .receive-btn:disabled { background: #ccc; cursor: not-allowed; }
-    .received-badge { display: inline-block; padding: 10px 30px; background: #4caf50; color: white; border-radius: 5px; font-size: 16px; margin-left: 10px; }
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
-    .modal-content { background: white; padding: 30px; border-radius: 10px; max-width: 400px; width: 90%; }
-    .modal-content h3 { color: #1565c0; margin-bottom: 20px; }
-    .modal-content input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; margin-bottom: 20px; }
-    .modal-content .btn-row { display: flex; gap: 10px; justify-content: flex-end; }
-    .modal-content button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
-    .modal-content .cancel-btn { background: #f5f5f5; color: #333; }
-    .modal-content .confirm-btn { background: #4caf50; color: white; }
-    .modal-content .confirm-btn:disabled { background: #ccc; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', system-ui, sans-serif; background: #f8f8f6; color: #0a0a0a; min-height: 100vh; padding: 40px 20px; }
+    .container { max-width: 760px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+    .brand { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; }
+    .brand span { font-weight: 300; color: rgba(0,0,0,0.4); font-size: 13px; display: block; margin-top: 2px; }
+    .card { background: #fff; border: 0.5px solid rgba(0,0,0,0.08); border-radius: 16px; overflow: hidden; margin-bottom: 12px; }
+    .card-header { padding: 18px 22px; border-bottom: 0.5px solid rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: center; }
+    .card-title { font-size: 11px; font-weight: 600; color: rgba(0,0,0,0.35); letter-spacing: 0.07em; text-transform: uppercase; }
+    .card-body { padding: 18px 22px; }
+    .order-number { font-size: 28px; font-weight: 500; letter-spacing: -1px; margin-bottom: 4px; }
+    .order-date { font-size: 13px; color: rgba(0,0,0,0.4); }
+    .status-badge { display: inline-flex; align-items: center; padding: 6px 14px; border-radius: 100px; font-size: 12px; font-weight: 600; background: ${status.bg}; color: ${status.color}; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .info-label { font-size: 10px; font-weight: 600; color: rgba(0,0,0,0.35); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 4px; }
+    .info-value { font-size: 14px; color: #0a0a0a; font-weight: 500; }
+    .info-sub { font-size: 12px; color: rgba(0,0,0,0.4); margin-top: 1px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 10px 14px; background: rgba(0,0,0,0.02); border-bottom: 0.5px solid rgba(0,0,0,0.08); font-size: 10px; font-weight: 600; color: rgba(0,0,0,0.35); letter-spacing: 0.07em; text-transform: uppercase; text-align: left; }
+    .total-row { display: flex; justify-content: flex-end; align-items: center; gap: 32px; padding: 16px 22px; border-top: 0.5px solid rgba(0,0,0,0.08); }
+    .total-label { font-size: 12px; color: rgba(0,0,0,0.4); }
+    .total-amount { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; }
+    .action-bar { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+    .btn-secondary { background: #fff; color: #0a0a0a; border: 0.5px solid rgba(0,0,0,0.15); border-radius: 10px; padding: 12px 24px; font-size: 14px; cursor: pointer; font-family: inherit; }
+    .btn-success { background: #065f46; color: #fff; border: none; border-radius: 10px; padding: 12px 24px; font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit; }
+    .received-msg { background: #d1fae5; color: #065f46; border-radius: 10px; padding: 12px 20px; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; }
+    .history-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.05); font-size: 13px; }
+    .history-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .history-date { font-size: 11px; color: rgba(0,0,0,0.35); margin-left: auto; }
     @media print {
-      body { padding: 0; }
-      .no-print { display: none; }
+      body { background: #fff; padding: 0; }
+      .no-print { display: none !important; }
+      .action-bar { display: none; }
+    }
+    @media (max-width: 600px) {
+      .info-grid { grid-template-columns: 1fr; }
+      .header { flex-direction: column; gap: 12px; }
     }
   </style>
 </head>
 <body>
-  <div class="no-print" style="margin-bottom: 20px; text-align: center;">
-    <button onclick="window.print()" style="padding: 10px 30px; background: #006633; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
-      🖨️ Print / Save as PDF
-    </button>
-    ${order.status === 'DISPATCHED' ? `
-    <button id="receiveBtn" class="receive-btn" onclick="openReceiveModal()">
-      ✅ Mark as Received
-    </button>
-    ` : order.status === 'RECEIVED' ? `
-    <span class="received-badge">✅ Received</span>
-    ` : ''}
-  </div>
-  
-  ${order.status === 'DISPATCHED' ? `
-  <div id="receiveModal" class="modal-overlay">
-    <div class="modal-content">
-      <h3>📦 Confirm Receipt</h3>
-      <p style="margin-bottom: 15px;">Enter your name to confirm you have received this order:</p>
-      <input type="text" id="receivedByInput" placeholder="Your name" autocomplete="name" />
-      <div class="btn-row">
-        <button class="cancel-btn" onclick="closeReceiveModal()">Cancel</button>
-        <button id="confirmReceiveBtn" class="confirm-btn" onclick="confirmReceive()">Confirm Received</button>
+  <div class="container">
+    <div class="header">
+      <div class="brand">Redan<span>Stock Request Voucher</span></div>
+      <div style="text-align:right">
+        <div style="font-size:12px;color:rgba(0,0,0,0.35);margin-bottom:4px">Generated</div>
+        <div style="font-size:13px;font-weight:500">${formatDate(new Date().toISOString())}</div>
       </div>
     </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Order Details</span>
+        <span class="status-badge" id="statusBadge">${status.label}</span>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+          <div>
+            <div class="order-number">${order.voucher_number ?? '#' + String(order.id)}</div>
+            <div class="order-date">${formatDate(order.order_date)} &middot; ${order.category ?? ''}</div>
+          </div>
+          ${order.requested_by ? `<div style="text-align:right"><div class="info-label">Requested by</div><div class="info-value">${order.requested_by}</div></div>` : ''}
+        </div>
+        <div class="info-grid">
+          <div>
+            <div class="info-label">Site</div>
+            <div class="info-value">${order.site_name ?? '&mdash;'}</div>
+            ${cityAddress ? `<div class="info-sub">${cityAddress}</div>` : ''}
+          </div>
+          <div>
+            <div class="info-label">Contact</div>
+            <div class="info-value">${order.contact_name ?? '&mdash;'}</div>
+            ${phoneEmail ? `<div class="info-sub">${phoneEmail}</div>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Order Items (${orderItems.length} line ${orderItems.length === 1 ? 'item' : 'items'})</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Item</th>
+            <th style="text-align:center">Qty</th>
+            <th style="text-align:right">Unit Cost</th>
+            <th style="text-align:right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemRows || '<tr><td colspan="5" style="padding:24px;text-align:center;color:rgba(0,0,0,0.35)">No items found</td></tr>'}
+        </tbody>
+      </table>
+      <div class="total-row">
+        <span class="total-label">Order Total</span>
+        <span class="total-amount">${Number(order.total_amount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">Status History</span></div>
+      <div class="card-body">
+        <div class="history-item">
+          <div class="history-dot" style="background:#065f46"></div>
+          <span>Order submitted</span>
+          <span class="history-date">${formatDate(order.order_date)}</span>
+        </div>
+        ${order.status !== 'PENDING' ? `
+        <div class="history-item">
+          <div class="history-dot" style="background:#1e40af"></div>
+          <span>${status.label}${order.dispatched_by ? ' by ' + String(order.dispatched_by) : ''}</span>
+          <span class="history-date">${formatDate(order.dispatched_at ?? order.updated_at)}</span>
+        </div>` : ''}
+        ${order.status === 'RECEIVED' ? `
+        <div class="history-item">
+          <div class="history-dot" style="background:#065f46"></div>
+          <span>Received at site${order.received_by ? ' by ' + String(order.received_by) : ''}</span>
+          <span class="history-date">${formatDate(order.received_at ?? order.updated_at)}</span>
+        </div>` : ''}
+      </div>
+    </div>
+
+    <div class="action-bar no-print">
+      <button class="btn-secondary" onclick="window.print()">&#8595; Download / Print PDF</button>
+      ${canMarkReceived ? `<button class="btn-success" id="receiveBtn" onclick="markReceived(${String(order.id)})">&#10003; Mark as Received</button>` : ''}
+      ${order.status === 'RECEIVED' ? `<div class="received-msg">&#10003; This order has been received</div>` : ''}
+    </div>
   </div>
-  
+
   <script>
-    function openReceiveModal() {
-      document.getElementById('receiveModal').style.display = 'flex';
-      document.getElementById('receivedByInput').focus();
-    }
-    
-    function closeReceiveModal() {
-      document.getElementById('receiveModal').style.display = 'none';
-    }
-    
-    async function confirmReceive() {
-      const receivedBy = document.getElementById('receivedByInput').value.trim();
-      if (!receivedBy) {
-        alert('Please enter your name');
-        return;
-      }
-      
-      const btn = document.getElementById('confirmReceiveBtn');
-      const receiveBtn = document.getElementById('receiveBtn');
+    async function markReceived(orderId) {
+      var btn = document.getElementById('receiveBtn');
+      if (!btn) return;
+      btn.textContent = 'Updating\u2026';
       btn.disabled = true;
-      btn.textContent = 'Processing...';
-      
       try {
-        const response = await fetch('/api/orders/${order.id}/receive', {
+        var res = await fetch('/api/orders/' + orderId + '/receive', {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ received_by: receivedBy })
+          headers: { 'Content-Type': 'application/json' }
         });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-          alert('Order marked as received successfully!');
-          location.reload();
+        var data = await res.json();
+        if (res.ok) {
+          btn.style.display = 'none';
+          var msg = document.createElement('div');
+          msg.className = 'received-msg';
+          msg.textContent = '\u2713 Marked as received. Thank you!';
+          btn.parentElement.appendChild(msg);
+          var badge = document.getElementById('statusBadge');
+          if (badge) {
+            badge.textContent = 'Received';
+            badge.style.background = '#d1fae5';
+            badge.style.color = '#065f46';
+          }
         } else {
-          alert('Error: ' + (data.error || 'Failed to mark as received'));
+          btn.textContent = '\u2713 Mark as Received';
           btn.disabled = false;
-          btn.textContent = 'Confirm Received';
+          alert('Failed: ' + (data.error || 'Unknown error'));
         }
-      } catch (error) {
-        alert('Network error. Please try again.');
+      } catch(e) {
+        btn.textContent = '\u2713 Mark as Received';
         btn.disabled = false;
-        btn.textContent = 'Confirm Received';
+        alert('Network error. Please try again.');
       }
     }
-    
-    // Close modal on outside click
-    document.getElementById('receiveModal').addEventListener('click', function(e) {
-      if (e.target === this) closeReceiveModal();
-    });
-    
-    // Enter key to submit
-    document.getElementById('receivedByInput').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') confirmReceive();
-    });
   </script>
-  ` : ''}
-
-  <div class="header">
-    <h1>REDAN COUPON</h1>
-    <h2>${order.status === 'DECLINED' ? 'DECLINED Order' : order.status === 'PARTIAL_DISPATCH' ? 'Partial Dispatch Note' : order.status === 'DISPATCHED' ? 'Dispatch Note' : 'Request Voucher'} - ${order.voucher_number}</h2>
-  </div>
-  
-  <div class="info-grid">
-    <div class="info-box">
-      <h3>ORDER INFORMATION</h3>
-      <p><span class="label">Voucher:</span> <span class="value">${order.voucher_number}</span></p>
-      <p><span class="label">Date:</span> <span class="value">${new Date(order.order_date).toLocaleDateString()}</span></p>
-      <p><span class="label">Category:</span> <span class="value">${order.category}</span></p>
-      <p><span class="label">Status:</span> <span class="status status-${order.status}">${order.status}</span></p>
-      <p><span class="label">Requested By:</span> <span class="value">${order.requested_by || '-'}</span></p>
-    </div>
-    
-    <div class="info-box">
-      <h3>SITE DETAILS</h3>
-      <p><span class="label">Site:</span> <span class="value">${order.site_name}</span></p>
-      <p><span class="label">Code:</span> <span class="value">${order.site_code || '-'}</span></p>
-      <p><span class="label">Address:</span> <span class="value">${order.address || '-'}</span></p>
-      <p><span class="label">City:</span> <span class="value">${order.city || '-'}</span></p>
-      <p><span class="label">Contact:</span> <span class="value">${order.contact_name || '-'}</span></p>
-      <p><span class="label">Phone:</span> <span class="value">${order.phone || '-'}</span></p>
-    </div>
-  </div>
-  
-  ${order.status === 'DECLINED' ? `
-  <div class="decline-notice">
-    <h4>❌ ORDER DECLINED</h4>
-    <p><strong>Reason:</strong> ${order.decline_reason || 'No reason provided'}</p>
-  </div>
-  ` : ''}
-
-  ${order.status === 'PARTIAL_DISPATCH' ? `
-  <div class="dispatch-summary">
-    <h4>⚠️ PARTIAL DISPATCH</h4>
-    <p>Some items on this order remain pending and will be dispatched when stock becomes available.</p>
-  </div>
-  ` : ''}
-
-  ${(() => {
-    const adjustedItems = items.filter((item: any) => item.qty_approved !== null && item.qty_approved !== item.qty_requested);
-    if (adjustedItems.length === 0) return '';
-    return `
-  <div class="adjustment-notice">
-    <h4>📝 QUANTITY ADJUSTMENTS BY ADMIN</h4>
-    <p>The following items had their quantities adjusted:</p>
-    <ul>
-      ${adjustedItems.map((item: any) => `
-        <li><strong>${item.item_name}</strong> (${item.sku}): Requested ${item.qty_requested} → Approved ${item.qty_approved}</li>
-      `).join('')}
-    </ul>
-  </div>
-    `;
-  })()}
-
-  <table>
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Item</th>
-        <th>SKU</th>
-        <th>Size</th>
-        <th>Requested</th>
-        <th>Approved</th>
-        <th>Dispatched</th>
-        <th>Pending</th>
-        <th>Unit Cost</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${items.map((item: any, index: number) => {
-        const requested = item.qty_requested || 0;
-        const approved = item.qty_approved !== null ? item.qty_approved : requested;
-        const dispatched = item.qty_dispatched || 0;
-        const pending = approved - dispatched;
-        const isComplete = pending === 0 && dispatched > 0;
-        const wasAdjusted = item.qty_approved !== null && item.qty_approved !== requested;
-        const lineTotal = approved * parseFloat(item.unit_cost);
-        return `
-        <tr class="${isComplete ? 'complete-row' : wasAdjusted ? 'adjusted-row' : pending > 0 ? 'pending-row' : ''}">
-          <td>${index + 1}</td>
-          <td>${item.item_name}</td>
-          <td>${item.sku}</td>
-          <td>${item.size || '-'}</td>
-          <td style="text-align: center; ${wasAdjusted ? 'text-decoration: line-through; color: #999;' : ''}">${requested}</td>
-          <td style="text-align: center; font-weight: bold; ${wasAdjusted ? 'color: #1565c0;' : ''}">${wasAdjusted ? approved : '-'}</td>
-          <td style="text-align: center; font-weight: bold; color: ${dispatched > 0 ? '#2e7d32' : '#999'};">${dispatched > 0 ? dispatched : '-'}</td>
-          <td style="text-align: center; font-weight: bold; color: ${pending > 0 ? '#e65100' : '#2e7d32'};">${pending > 0 ? pending : (dispatched > 0 ? '✓' : '-')}</td>
-          <td>$${parseFloat(item.unit_cost).toFixed(2)}</td>
-          <td>$${lineTotal.toFixed(2)}</td>
-        </tr>
-        `;
-      }).join('')}
-      <tr class="total-row">
-        <td colspan="9" style="text-align: right;">TOTAL:</td>
-        <td>$${parseFloat(order.total_amount).toFixed(2)}</td>
-      </tr>
-    </tbody>
-  </table>
-  
-  ${order.notes ? `<p><strong>Notes:</strong> ${order.notes}</p>` : ''}
-  
-  ${order.dispatched_at ? `
-    <p style="margin-top: 10px;"><strong>Dispatched:</strong> ${new Date(order.dispatched_at).toLocaleString()} by ${order.dispatched_by || '-'}</p>
-  ` : ''}
-  
-  ${order.received_at ? `
-    <p><strong>Received:</strong> ${new Date(order.received_at).toLocaleString()} by ${order.received_by || '-'}</p>
-  ` : ''}
-
-  <div style="margin-top: 40px; padding-top: 20px; border-top: 1px dashed #ccc;">
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-      <div>
-        <p style="font-weight: bold; margin-bottom: 30px;">Issued By (Warehouse):</p>
-        <div style="border-bottom: 1px solid #333; width: 80%; margin-bottom: 5px;">&nbsp;</div>
-        <p style="font-size: 11px; color: #666;">Name & Signature</p>
-        <p style="margin-top: 15px; font-size: 12px;">Date: _______________</p>
-      </div>
-      <div>
-        <p style="font-weight: bold; margin-bottom: 30px;">Received By (Site):</p>
-        <div style="border-bottom: 1px solid #333; width: 80%; margin-bottom: 5px;">&nbsp;</div>
-        <p style="font-size: 11px; color: #666;">Name & Signature</p>
-        <p style="margin-top: 15px; font-size: 12px;">Date: _______________</p>
-      </div>
-    </div>
-    <p style="text-align: center; font-size: 11px; color: #666; margin-top: 20px;">
-      Please verify all items received and sign above. Report any discrepancies immediately.
-    </p>
-  </div>
-  
-  <div class="footer">
-    <p>Generated on ${new Date().toLocaleString()}</p>
-    <p>Redan Coupon Order Management System</p>
-  </div>
 </body>
-</html>
-    `;
-    
-    return new Response(html, {
+</html>`;
+
+    return new NextResponse(html, {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
       },
     });
-    
-  } catch (error) {
-    console.error('Error generating order view:', error);
-    return new Response('Error generating order view', { status: 500 });
+  } catch (err) {
+    console.error('[order-view]', err);
+    return new NextResponse('Error loading order', { status: 500 });
   }
 }
