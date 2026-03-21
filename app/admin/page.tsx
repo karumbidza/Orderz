@@ -1,16 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useUser } from '@clerk/nextjs';
+import { useUser, UserButton } from '@clerk/nextjs';
 import {
-  Box,
-  Paper,
-  Typography,
-  Tabs,
-  Tab,
-  Button,
-  IconButton,
-  Chip,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -19,99 +11,43 @@ import {
   Snackbar,
   Alert,
   CircularProgress,
-  Tooltip,
-  AppBar,
-  Toolbar,
-  Container,
-  Stack,
-  Card,
-  CardContent,
 } from '@mui/material';
-import {
-  DataGrid,
-  GridColDef,
-} from '@mui/x-data-grid';
-import {
-  LocalShipping as DispatchIcon,
-  Add as AddIcon,
-  Remove as RemoveIcon,
-  Refresh as RefreshIcon,
-  Print as PrintIcon,
-  Close as CloseIcon,
-  Inventory as InventoryIcon,
-  Receipt as ReceiptIcon,
-  History as HistoryIcon,
-  ArrowDownward as InIcon,
-  ArrowUpward as OutIcon,
-  Search as SearchIcon,
-  FilterList as FilterIcon,
-  Store as SiteIcon,
-  Assessment as TotalsIcon,
-  Edit as EditIcon,
-  Download as DownloadIcon,
-  Analytics as ReportsIcon,
-} from '@mui/icons-material';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
 
 // ─────────────────────────────────────────
-// THEME
+// HELPERS
 // ─────────────────────────────────────────
-const theme = createTheme({
-  palette: {
-    mode: 'light',
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-    background: {
-      default: '#f5f5f5',
-      paper: '#ffffff',
-    },
-  },
-  typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-    h4: {
-      fontWeight: 600,
-    },
-    h6: {
-      fontWeight: 600,
-    },
-  },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          textTransform: 'none',
-          borderRadius: 8,
-        },
-      },
-    },
-    MuiPaper: {
-      styleOverrides: {
-        root: {
-          borderRadius: 12,
-        },
-      },
-    },
-    MuiDialog: {
-      styleOverrides: {
-        paper: {
-          borderRadius: 12,
-        },
-      },
-    },
-    MuiChip: {
-      styleOverrides: {
-        root: {
-          fontWeight: 500,
-        },
-      },
-    },
-  },
-});
+function StatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, { bg: string; color: string; label: string }> = {
+    PENDING: { bg: '#fef3c7', color: '#92400e', label: 'Pending' },
+    PROCESSING: { bg: '#dbeafe', color: '#1e40af', label: 'Processing' },
+    DISPATCHED: { bg: '#dbeafe', color: '#1e40af', label: 'Dispatched' },
+    PARTIAL_DISPATCH: { bg: '#ede9fe', color: '#5b21b6', label: 'Partial' },
+    RECEIVED: { bg: '#d1fae5', color: '#065f46', label: 'Received' },
+    DECLINED: { bg: '#ffe4e6', color: '#9f1239', label: 'Declined' },
+    CANCELLED: { bg: '#fee2e2', color: '#7f1d1d', label: 'Cancelled' },
+  };
+  const c = cfg[status] || { bg: '#f3f4f6', color: '#6b7280', label: status };
+  return (
+    <span style={{ background: c.bg, color: c.color, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, letterSpacing: '0.02em', display: 'inline-block' }}>
+      {c.label}
+    </span>
+  );
+}
+
+function MovementBadge({ type }: { type: string }) {
+  const cfg: Record<string, { bg: string; color: string }> = {
+    IN: { bg: '#d1fae5', color: '#065f46' },
+    OUT: { bg: '#ffe4e6', color: '#9f1239' },
+    DAMAGE: { bg: '#fee2e2', color: '#7f1d1d' },
+    ADJUSTMENT: { bg: '#dbeafe', color: '#1e40af' },
+  };
+  const c = cfg[type] || { bg: '#f3f4f6', color: '#6b7280' };
+  return (
+    <span style={{ background: c.bg, color: c.color, borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 600, display: 'inline-block' }}>
+      {type}
+    </span>
+  );
+}
 
 // ─────────────────────────────────────────
 // TYPES
@@ -190,7 +126,7 @@ interface StockItem {
 interface StockMovement {
   id: number;
   item_id: number;
-  movement_type: 'IN' | 'OUT';
+  movement_type: 'IN' | 'OUT' | 'DAMAGE' | 'ADJUSTMENT';
   quantity: number;
   reference_type: string;
   reference_id: string | null;
@@ -248,15 +184,6 @@ interface DashboardData {
   generated_at: string;
 }
 
-const STATUS_COLORS: Record<string, 'warning' | 'info' | 'secondary' | 'success' | 'error' | 'default'> = {
-  PENDING: 'warning',
-  PROCESSING: 'info',
-  DISPATCHED: 'secondary',
-  PARTIAL_DISPATCH: 'warning',
-  RECEIVED: 'success',
-  DECLINED: 'error',
-  CANCELLED: 'error',
-};
 
 // ─────────────────────────────────────────
 // MAIN COMPONENT
@@ -343,6 +270,7 @@ export default function AdminPage() {
   // Add Product Modal
   const [addProductModal, setAddProductModal] = useState<{
     open: boolean;
+    mode: 'new' | 'add-size';
     submitting: boolean;
     product: string;
     category: string;
@@ -352,7 +280,11 @@ export default function AdminPage() {
     unit: string;
     cost: string;
     initialQuantity: string;
-  }>({ open: false, submitting: false, product: '', category: '', sku: '', role: 'All', size: '', unit: 'unit', cost: '0', initialQuantity: '0' });
+  }>({ open: false, mode: 'new', submitting: false, product: '', category: '', sku: '', role: 'All', size: '', unit: 'unit', cost: '0', initialQuantity: '0' });
+
+  // Decline form state
+  const [declineInput, setDeclineInput] = useState('');
+  const [showDeclineForm, setShowDeclineForm] = useState(false);
 
   // Site Ledger Modal
   const [siteLedgerModal, setSiteLedgerModal] = useState<{
@@ -976,7 +908,7 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success) {
         showMessage(`Product "${data.item.product}" added with SKU: ${data.item.sku}`, 'success');
-        setAddProductModal({ open: false, submitting: false, product: '', category: '', sku: '', role: 'All', size: '', unit: 'unit', cost: '0', initialQuantity: '0' });
+        setAddProductModal({ open: false, mode: 'new', submitting: false, product: '', category: '', sku: '', role: 'All', size: '', unit: 'unit', cost: '0', initialQuantity: '0' });
         loadStock(); // Refresh inventory
       } else {
         showMessage('Error: ' + data.error, 'error');
@@ -1182,2122 +1114,717 @@ export default function AdminPage() {
   const uniqueCategories = Array.from(new Set(stock.map(s => s.category)));
   const uniqueOrderCategories = Array.from(new Set(orders.map(o => o.category).filter(Boolean)));
   const uniqueStatuses = Array.from(new Set(orders.map(o => o.status)));
+  const uniqueProducts = Array.from(new Set(stock.map(s => s.product))).sort();
 
-  // ─────────────────────────────────────────
-  // DATA GRID COLUMNS
-  // ─────────────────────────────────────────
-  const ordersColumns: GridColDef[] = [
-    { field: 'voucher_number', headerName: 'Order #', width: 130, renderCell: (params) => (
-      <Typography variant="body2" fontFamily="monospace" fontWeight={500}>{params.value}</Typography>
-    )},
-    { field: 'category', headerName: 'Category', width: 100, renderCell: (params) => (
-      <Chip label={params.value || 'N/A'} size="small" variant="outlined" sx={{ fontSize: 11 }} />
-    )},
-    { field: 'site_name', headerName: 'Site', width: 140, renderCell: (params) => (
-      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
-    )},
-    { field: 'site_city', headerName: 'City', width: 100, renderCell: (params) => (
-      <Typography variant="body2" color="text.secondary">{params.value}</Typography>
-    )},
-    { field: 'site_address', headerName: 'Address', width: 140, renderCell: (params) => (
-      <Tooltip title={params.value || ''} arrow placement="top">
-        <Typography variant="body2" color="text.secondary" noWrap sx={{ cursor: 'pointer' }}>
-          {params.value || '—'}
-        </Typography>
-      </Tooltip>
-    )},
-    { field: 'status', headerName: 'Status', width: 130, renderCell: (params) => (
-      <Chip label={params.value} color={STATUS_COLORS[params.value] || 'default'} size="small" />
-    )},
-    { field: 'total_amount', headerName: 'Total', width: 110, align: 'right', headerAlign: 'right', renderCell: (params) => (
-      <Typography variant="body2" fontWeight={600}>${parseFloat(params.value).toFixed(2)}</Typography>
-    )},
-    { field: 'order_date', headerName: 'Date', width: 110, renderCell: (params) => {
-      const date = new Date(params.value);
-      return <Typography variant="body2">{date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography>;
-    }},
-    { field: 'item_count', headerName: 'Items', width: 80, align: 'center', headerAlign: 'center' },
-    { field: 'actions', headerName: '', width: 100, sortable: false, align: 'center', headerAlign: 'center', renderCell: (params) => (
-      <Button size="small" variant="outlined" onClick={() => viewOrder(params.row.id)}>
-        View
-      </Button>
-    )},
-  ];
+  const generateSku = (productName: string, sizeName: string): string => {
+    const existingItems = stock.filter(s => s.product === productName);
+    if (existingItems.length === 0 || !sizeName) return '';
+    const skus = existingItems.map(s => s.sku);
+    let prefix = skus[0];
+    for (const sku of skus) {
+      let i = 0;
+      while (i < prefix.length && i < sku.length && prefix[i] === sku[i]) i++;
+      prefix = prefix.slice(0, i);
+    }
+    const sizeCode = sizeName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    return prefix + sizeCode;
+  };
 
-  const inventoryColumns: GridColDef[] = [
-    { field: 'sku', headerName: 'SKU', width: 120, renderCell: (params) => (
-      <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
-    )},
-    { field: 'product', headerName: 'Product', flex: 1, minWidth: 180, renderCell: (params) => (
-      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
-    )},
-    { field: 'size', headerName: 'Size', width: 80, align: 'center', headerAlign: 'center', renderCell: (params) => (
-      params.value ? <Typography variant="body2">{params.value}</Typography> : <Typography variant="caption" color="text.secondary">—</Typography>
-    )},
-    { field: 'unit', headerName: 'Unit', width: 80, align: 'center', headerAlign: 'center', renderCell: (params) => (
-      <Typography variant="body2" color="text.secondary">{params.value}</Typography>
-    )},
-    { field: 'category', headerName: 'Category', width: 130, renderCell: (params) => (
-      <Chip label={params.value} size="small" variant="outlined" />
-    )},
-    { field: 'quantity_on_hand', headerName: 'Stock', width: 100, align: 'right', headerAlign: 'right', renderCell: (params) => (
-      <Typography variant="body2" fontWeight={600} color={params.value === 0 ? 'error.main' : params.value < 10 ? 'warning.main' : 'text.primary'}>
-        {params.value}
-      </Typography>
-    )},
-    { field: 'cost', headerName: 'Unit Cost', width: 110, align: 'right', headerAlign: 'right', renderCell: (params) => (
-      <Typography variant="body2">${parseFloat(params.value).toFixed(2)}</Typography>
-    )},
-    { field: 'value', headerName: 'Value', width: 120, align: 'right', headerAlign: 'right', valueGetter: (value, row) => row.quantity_on_hand * parseFloat(row.cost), renderCell: (params) => (
-      <Typography variant="body2" fontWeight={600}>${params.value.toFixed(2)}</Typography>
-    )},
-    { field: 'actions', headerName: '', width: 100, sortable: false, align: 'center', headerAlign: 'center', renderCell: (params) => (
-      <Button size="small" variant="outlined" onClick={() => openStockViewModal(params.row)}>
-        View
-      </Button>
-    )},
-  ];
+  const handleRefresh = () => {
+    if (activeTab === 'dashboard') loadDashboard();
+    else if (activeTab === 'orders') loadOrders();
+    else if (activeTab === 'inventory') loadStock();
+    else if (activeTab === 'sites') loadSites();
+    else if (activeTab === 'reports') { loadStockHistory(); loadSiteTotals(); }
+  };
 
-  const historyColumns: GridColDef[] = [
-    { field: 'created_at', headerName: 'Date', width: 100, renderCell: (params) => {
-      const date = new Date(params.value);
-      return <Typography variant="body2">{date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography>;
-    }},
-    { field: 'time', headerName: 'Time', width: 70, renderCell: (params) => {
-      const date = new Date(params.row.created_at);
-      return <Typography variant="body2" color="text.secondary">{date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</Typography>;
-    }},
-    { field: 'sku', headerName: 'SKU', width: 120, renderCell: (params) => (
-      <Typography variant="body2" fontFamily="monospace" fontSize={11} sx={{ bgcolor: 'grey.100', px: 0.75, py: 0.25, borderRadius: 0.5 }}>{params.value}</Typography>
-    )},
-    { field: 'product', headerName: 'Product', width: 140, renderCell: (params) => (
-      <Typography variant="body2" fontWeight={500} noWrap>{params.value}</Typography>
-    )},
-    { field: 'category', headerName: 'Category', width: 100, renderCell: (params) => (
-      <Typography variant="body2" color="text.secondary">{params.value || '—'}</Typography>
-    )},
-    { field: 'movement_type', headerName: 'Type', width: 100, renderCell: (params) => {
-      const typeConfig: Record<string, { icon: typeof InIcon; color: 'success' | 'warning' | 'error' | 'info'; label: string }> = {
-        'IN': { icon: InIcon, color: 'success', label: 'IN' },
-        'OUT': { icon: OutIcon, color: 'warning', label: 'OUT' },
-        'DAMAGE': { icon: OutIcon, color: 'error', label: 'DAMAGE' },
-        'ADJUSTMENT': { icon: InIcon, color: 'info', label: 'ADJUST' },
-      };
-      const config = typeConfig[params.value] || typeConfig['OUT'];
-      const IconComponent = config.icon;
-      return (
-        <Chip
-          icon={<IconComponent />}
-          label={config.label}
-          color={config.color}
-          size="small"
-          sx={{ fontSize: 10 }}
-        />
-      );
-    }},
-    { field: 'quantity', headerName: 'Qty', width: 70, align: 'center', headerAlign: 'center', renderCell: (params) => {
-      const isPositive = params.row.movement_type === 'IN' || (params.row.movement_type === 'ADJUSTMENT' && params.value > 0);
-      return (
-        <Typography variant="body2" fontWeight={600} color={isPositive ? 'success.main' : 'error.main'}>
-          {isPositive ? '+' : '−'}{Math.abs(params.value)}
-        </Typography>
-      );
-    }},
-    { field: 'site_name', headerName: 'Site', width: 120, renderCell: (params) => params.value ? (
-      <Typography variant="body2" fontWeight={500} noWrap>{params.value}</Typography>
-    ) : <Typography variant="caption" color="text.secondary">—</Typography>},
-    { field: 'order_number', headerName: 'Voucher', width: 110, renderCell: (params) => params.value ? (
-      <Typography variant="body2" fontFamily="monospace" fontSize={11}>{params.value}</Typography>
-    ) : <Typography variant="caption" color="text.secondary">—</Typography>},
-    { field: 'stock_value', headerName: 'Value', width: 90, align: 'right', headerAlign: 'right', renderCell: (params) => {
-      const value = params.value ? parseFloat(params.value) : Math.abs(params.row.quantity) * parseFloat(params.row.cost || 0);
-      const isPositive = params.row.movement_type === 'IN' || (params.row.movement_type === 'ADJUSTMENT' && params.row.quantity > 0);
-      return <Typography variant="body2" fontWeight={500} color={isPositive ? 'success.main' : 'error.main'}>${value.toFixed(2)}</Typography>;
-    }},
-    { field: 'reason', headerName: 'Reference', flex: 1, minWidth: 140, renderCell: (params) => (
-      <Tooltip title={params.value || ''}>
-        <Typography variant="body2" color="text.secondary" noWrap fontSize={12}>{params.value || '—'}</Typography>
-      </Tooltip>
-    )},
-  ];
-
-  const sitesColumns: GridColDef[] = [
-    { field: 'site_code', headerName: 'Code', width: 140, renderCell: (params) => (
-      <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
-    )},
-    { field: 'name', headerName: 'Site Name', flex: 1, minWidth: 180, renderCell: (params) => (
-      <Typography variant="body2" fontWeight={500}>{params.value}</Typography>
-    )},
-    { field: 'city', headerName: 'City', width: 120, renderCell: (params) => (
-      <Typography variant="body2">{params.value}</Typography>
-    )},
-    { field: 'address', headerName: 'Address', width: 200, renderCell: (params) => (
-      <Tooltip title={params.value || ''} arrow>
-        <Typography variant="body2" color="text.secondary" noWrap sx={{ cursor: 'pointer' }}>{params.value || '—'}</Typography>
-      </Tooltip>
-    )},
-    { field: 'contact_name', headerName: 'Contact', width: 150, renderCell: (params) => (
-      <Typography variant="body2">{params.value || '—'}</Typography>
-    )},
-    { field: 'phone', headerName: 'Phone', width: 120, renderCell: (params) => (
-      <Typography variant="body2" fontFamily="monospace">{params.value || '—'}</Typography>
-    )},
-    { field: 'email', headerName: 'Email', width: 180, renderCell: (params) => (
-      <Typography variant="body2" color="text.secondary" noWrap>{params.value || '—'}</Typography>
-    )},
-    { field: 'status', headerName: 'Status', width: 100, renderCell: (params) => (
-      <Chip label={params.value} color={params.value === 'ACTIVE' ? 'success' : 'default'} size="small" />
-    )},
-    { field: 'actions', headerName: 'Actions', width: 100, sortable: false, renderCell: (params) => (
-      <IconButton size="small" color="primary" onClick={() => openSiteModal(params.row)}>
-        <EditIcon />
-      </IconButton>
-    )},
-  ];
-
-  const totalsColumns: GridColDef[] = [
-    { field: 'site_code', headerName: 'Code', width: 140, renderCell: (params) => (
-      <Typography variant="body2" fontFamily="monospace" sx={{ bgcolor: 'grey.100', px: 1, py: 0.5, borderRadius: 1 }}>{params.value}</Typography>
-    )},
-    { field: 'site_name', headerName: 'Site Name', flex: 1, minWidth: 180, renderCell: (params) => (
-      <Typography 
-        variant="body2" 
-        fontWeight={500} 
-        sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline', color: 'primary.main' } }}
-        onClick={() => loadSiteLedger(params.row)}
-      >
-        {params.value}
-      </Typography>
-    )},
-    { field: 'city', headerName: 'City', width: 120, renderCell: (params) => (
-      <Typography variant="body2">{params.value}</Typography>
-    )},
-    { field: 'total_orders', headerName: 'Orders', width: 100, align: 'center', headerAlign: 'center', renderCell: (params) => (
-      <Typography variant="body2" fontWeight={600}>{params.value}</Typography>
-    )},
-    { field: 'total_items_dispatched', headerName: 'Items Dispatched', width: 140, align: 'right', headerAlign: 'right', renderCell: (params) => (
-      <Typography variant="body2" fontWeight={600}>{params.value}</Typography>
-    )},
-    { field: 'total_value_dispatched', headerName: 'Total Value', width: 150, align: 'right', headerAlign: 'right', renderCell: (params) => (
-      <Typography variant="body2" fontWeight={600} color="primary.main">
-        ${parseFloat(params.value || 0).toFixed(2)}
-      </Typography>
-    )},
-    { field: 'last_dispatch_date', headerName: 'Last Dispatch', width: 130, renderCell: (params) => {
-      if (!params.value) return <Typography variant="caption" color="text.secondary">—</Typography>;
-      const date = new Date(params.value);
-      return <Typography variant="body2">{date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Typography>;
-    }},
-    { field: 'actions', headerName: '', width: 80, sortable: false, renderCell: (params) => (
-      <Button 
-        size="small" 
-        variant="text" 
-        onClick={() => loadSiteLedger(params.row)}
-        sx={{ minWidth: 'auto' }}
-      >
-        View
-      </Button>
-    )},
-  ];
 
   // ─────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────
+  const thStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'rgba(0,0,0,0.4)', letterSpacing: '0.06em', padding: '10px 14px', textAlign: 'left', background: 'rgba(0,0,0,0.02)', borderBottom: '0.5px solid rgba(0,0,0,0.08)' };
+  const tdStyle: React.CSSProperties = { fontSize: 13, color: '#0a0a0a', padding: '11px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.05)', verticalAlign: 'middle' };
+  const btnPrimary: React.CSSProperties = { background: '#0a0a0a', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' };
+  const btnSecondary: React.CSSProperties = { background: 'transparent', color: '#0a0a0a', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, padding: '7px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' };
+  const btnDanger: React.CSSProperties = { background: '#ffe4e6', color: '#9f1239', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' };
+  const inputStyle: React.CSSProperties = { border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff' };
+  const selectStyle: React.CSSProperties = { border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff', cursor: 'pointer' };
+
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      {/* Print Styles */}
-      <style jsx global>{`
+    <div style={{ minHeight: '100vh', background: '#fafafa' }}>
+      <style>{`
+        .pill-btn { transition: all 0.15s; }
+        .pill-btn:hover { opacity: 0.8; }
+        .data-row { transition: background 0.08s; }
+        .data-row:hover td { background: rgba(0,0,0,0.015) !important; }
+        .icon-btn { display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:8px; border:none; background:transparent; cursor:pointer; color:rgba(0,0,0,0.45); font-size:17px; transition:background 0.1s; }
+        .icon-btn:hover { background: rgba(0,0,0,0.06); }
         @media print {
-          body * {
-            visibility: hidden;
-          }
-          .print-content, .print-content * {
-            visibility: visible;
-          }
-          .print-content {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            padding: 15px;
-            background: white !important;
-            font-size: 12px;
-          }
-          .print-content table {
-            width: 100% !important;
-            border-collapse: collapse;
-            page-break-inside: auto;
-          }
-          .print-content tr {
-            page-break-inside: avoid;
-            page-break-after: auto;
-          }
-          .print-content th, .print-content td {
-            padding: 6px 8px !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-          .MuiDialog-root, .MuiModal-root {
-            position: static !important;
-          }
-          .MuiBackdrop-root {
-            display: none !important;
-          }
-          .MuiDialog-container {
-            height: auto !important;
-          }
-          .MuiPaper-root {
-            box-shadow: none !important;
-            border: none !important;
-          }
-          @page {
-            margin: 10mm;
-            size: A4 portrait;
-          }
+          body * { visibility: hidden; }
+          .print-area, .print-area * { visibility: visible; }
+          .print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 15px; }
+          .no-print { display: none !important; }
         }
       `}</style>
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }} className="no-print">
-        {/* App Bar */}
-        <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Toolbar sx={{ px: 3 }}>
-            <Typography variant="h6" sx={{ flexGrow: 1 }}>
-              Redan Coupon
-            </Typography>
-            <IconButton onClick={() => {
-              if (activeTab === 'dashboard') loadDashboard();
-              else if (activeTab === 'orders') loadOrders();
-              else if (activeTab === 'inventory') loadStock();
-              else if (activeTab === 'sites') loadSites();
-              else if (activeTab === 'reports') {
-                loadStockHistory();
-                loadSiteTotals();
-              }
-            }}>
-              <RefreshIcon />
-            </IconButton>
-          </Toolbar>
-        </AppBar>
 
-        <Box sx={{ py: 3, px: 3 }}>
-          {/* Page Header */}
-          <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box>
-              <Typography variant="h4">
-                {activeTab === 'dashboard' ? 'Dashboard' :
-                 activeTab === 'orders' ? 'Orders' : 
-                 activeTab === 'inventory' ? 'Inventory' : 
-                 activeTab === 'sites' ? 'Sites' : 'Reports'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {activeTab === 'dashboard' ? 'Overview and key metrics' :
-                 activeTab === 'orders' ? 'Manage incoming orders and dispatches' : 
-                 activeTab === 'inventory' ? 'Track stock levels and manage inventory' : 
-                 activeTab === 'sites' ? 'Manage site information' : 
-                 reportView === 'movements' ? 'Stock movement history and tracking' : 'Site dispatch totals and analysis'}
-              </Typography>
-            </Box>
-            <Stack direction="row" spacing={2}>
-              {activeTab === 'inventory' && (
-                <>
-                  <Button 
-                    variant="outlined" 
-                    startIcon={<DownloadIcon />}
-                    onClick={() => window.open('/api/admin/inventory/export?format=pdf', '_blank')}
-                  >
-                    Export PDF
-                  </Button>
-                  <Button 
-                    variant="outlined" 
-                    startIcon={<DownloadIcon />}
-                    onClick={() => {
-                      const link = document.createElement('a');
-                      link.href = '/api/admin/inventory/export?format=csv';
-                      link.download = `inventory-${new Date().toISOString().split('T')[0]}.csv`;
-                      link.click();
-                    }}
-                  >
-                    Export CSV
-                  </Button>
-                  <Button 
-                    variant="contained" 
-                    startIcon={<AddIcon />} 
-                    onClick={() => setAddProductModal({ open: true, submitting: false, product: '', category: '', sku: '', role: 'All', size: '', unit: 'unit', cost: '0', initialQuantity: '0' })}
-                    sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }}
-                  >
-                    Add Product
-                  </Button>
-                  <Button variant="contained" startIcon={<AddIcon />} onClick={openBulkReceiveModal}>
-                    Bulk Receive
-                  </Button>
-                </>
-              )}
-              {activeTab === 'sites' && (
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => openSiteModal(null, true)}>
-                  Add Site
-                </Button>
-              )}
-            </Stack>
-          </Box>
+      {/* ── Sticky frosted header ── */}
+      <header className="no-print" style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, zIndex: 300, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(12px)', borderBottom: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', padding: '0 24px', gap: 16 }}>
+        <span style={{ fontWeight: 600, fontSize: 15, color: '#0a0a0a', minWidth: 140 }}>Redan Coupon</span>
+        <nav style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', background: 'rgba(0,0,0,0.04)', borderRadius: 24, padding: 3, gap: 2 }}>
+            {(['dashboard', 'orders', 'inventory', 'sites', 'reports'] as TabValue[]).map(tab => (
+              <button key={tab} className="pill-btn" onClick={() => { setActiveTab(tab); setSearchQuery(''); setStatusFilter('all'); setCategoryFilter('all'); setTypeFilter('all'); }} style={{ padding: '5px 18px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: activeTab === tab ? 500 : 400, fontFamily: 'inherit', background: activeTab === tab ? '#fff' : 'transparent', color: activeTab === tab ? '#0a0a0a' : 'rgba(0,0,0,0.5)', boxShadow: activeTab === tab ? '0 1px 4px rgba(0,0,0,0.10)' : 'none' }}>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
+        </nav>
+        <div style={{ minWidth: 140, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }}>
+          <button className="icon-btn" onClick={handleRefresh} title="Refresh">↻</button>
+          <UserButton />
+        </div>
+      </header>
 
-          {/* Tabs */}
-          <Paper sx={{ mb: 3 }}>
-            <Tabs value={activeTab} onChange={(_, v) => { setActiveTab(v); setSearchQuery(''); setStatusFilter('all'); setCategoryFilter('all'); setTypeFilter('all'); }} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-              <Tab icon={<TotalsIcon />} iconPosition="start" label="Dashboard" value="dashboard" />
-              <Tab icon={<ReceiptIcon />} iconPosition="start" label="Orders" value="orders" />
-              <Tab icon={<InventoryIcon />} iconPosition="start" label="Inventory" value="inventory" />
-              <Tab icon={<SiteIcon />} iconPosition="start" label="Sites" value="sites" />
-              <Tab icon={<ReportsIcon />} iconPosition="start" label="Reports" value="reports" />
-            </Tabs>
-          </Paper>
+      {/* ── Main content ── */}
+      <main style={{ paddingTop: 72, paddingBottom: 48, paddingLeft: 24, paddingRight: 24, maxWidth: 1400, margin: '0 auto' }}>
 
-          {/* Search and Filters - Only show for non-dashboard tabs */}
-          {activeTab !== 'dashboard' && (
-          <>
-          <Paper sx={{ mb: 2, p: 2 }}>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <TextField
-                size="small"
-                placeholder={
-                  activeTab === 'orders' ? 'Search orders...' : 
-                  activeTab === 'inventory' ? 'Search products...' : 
-                  activeTab === 'sites' ? 'Search sites...' : 'Search reports...'
-                }
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                InputProps={{
-                  startAdornment: <SearchIcon sx={{ color: 'text.secondary', mr: 1 }} />,
-                }}
-                sx={{ minWidth: 300 }}
-              />
-              <FilterIcon sx={{ color: 'text.secondary' }} />
-              {activeTab === 'orders' && (
-                <>
-                  <TextField
-                    select
-                    size="small"
-                    label="Status"
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    SelectProps={{ native: true }}
-                    sx={{ minWidth: 140 }}
-                  >
-                    <option value="all">All Statuses</option>
-                    {uniqueStatuses.map(status => (
-                      <option key={status} value={status}>{status}</option>
-                    ))}
-                  </TextField>
-                  <TextField
-                    select
-                    size="small"
-                    label="Category"
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                    SelectProps={{ native: true }}
-                    sx={{ minWidth: 130 }}
-                  >
-                    <option value="all">All Categories</option>
-                    {uniqueOrderCategories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </TextField>
-                </>
-              )}
-              {activeTab === 'inventory' && (
-                <TextField
-                  select
-                  size="small"
-                  label="Category"
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  SelectProps={{ native: true }}
-                  sx={{ minWidth: 150 }}
-                >
-                  <option value="all">All Categories</option>
-                  {uniqueCategories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
+        {/* ─── DASHBOARD ─── */}
+        {activeTab === 'dashboard' && (
+          <div>
+            {dashboardLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><CircularProgress /></div>
+            ) : dashboardData ? (
+              <>
+                {/* Metric strip */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, marginBottom: 24, overflow: 'hidden' }}>
+                  {[
+                    { label: 'Pending Orders', value: dashboardData.orders.pending_orders, sub: `$${Number(dashboardData.orders.pending_value || 0).toLocaleString()}`, color: '#f59e0b' },
+                    { label: 'Dispatched', value: dashboardData.orders.dispatched_orders, sub: null, color: '#3b82f6' },
+                    { label: 'Low / Out Stock', value: dashboardData.low_stock.count, sub: null, color: '#f43f5e' },
+                    { label: 'Inventory Value', value: `$${Number(dashboardData.inventory.total_stock_value || 0).toLocaleString()}`, sub: `${dashboardData.inventory.total_items} items`, color: '#0a0a0a' },
+                  ].map((s, i) => (
+                    <div key={i} style={{ padding: '20px 24px', borderRight: i < 3 ? '0.5px solid rgba(0,0,0,0.08)' : 'none' }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(0,0,0,0.4)', marginBottom: 8 }}>{s.label}</div>
+                      <div style={{ fontSize: 26, fontWeight: 600, color: s.color, lineHeight: 1 }}>{s.value}</div>
+                      {s.sub && <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)', marginTop: 4 }}>{s.sub}</div>}
+                    </div>
                   ))}
-                </TextField>
-              )}
-              {activeTab === 'reports' && (
-                <>
-                  <TextField
-                    select
-                    size="small"
-                    label="Report"
-                    value={reportView}
-                    onChange={(e) => setReportView(e.target.value as ReportView)}
-                    SelectProps={{ native: true }}
-                    sx={{ minWidth: 160 }}
-                  >
-                    <option value="movements">Stock Movements</option>
-                    <option value="site-analysis">Site Analysis</option>
-                  </TextField>
-                  {reportView === 'movements' && (
-                    <>
-                      <TextField
-                        select
-                        size="small"
-                        label="Category"
-                        value={categoryFilter}
-                        onChange={(e) => setCategoryFilter(e.target.value)}
-                        SelectProps={{ native: true }}
-                        sx={{ minWidth: 130 }}
-                      >
-                        <option value="all">All Categories</option>
-                        {movementCategories.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
+                </div>
+                {/* Two-column */}
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
+                  {/* Pending orders table */}
+                  <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden' }}>
+                    <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>Pending Orders</span>
+                      <button onClick={() => setActiveTab('orders')} style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)', background: 'none', border: 'none', cursor: 'pointer' }}>View all →</button>
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr>{['Voucher','Site','Category','Items','Date',''].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {(dashboardData.pending_orders || []).slice(0, 8).map((o: any) => (
+                          <tr key={o.id} className="data-row">
+                            <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 11, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '2px 7px' }}>{o.voucher_number || o.order_number}</span></td>
+                            <td style={tdStyle}>{o.site_name}</td>
+                            <td style={{ ...tdStyle, color: 'rgba(0,0,0,0.5)' }}>{o.category || '—'}</td>
+                            <td style={{ ...tdStyle, textAlign: 'center' }}>{o.item_count}</td>
+                            <td style={{ ...tdStyle, fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{new Date(o.order_date || o.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short' })}</td>
+                            <td style={tdStyle}><button onClick={() => viewOrder(o.id)} style={{ ...btnSecondary, padding: '4px 12px', fontSize: 12 }}>View</button></td>
+                          </tr>
                         ))}
-                      </TextField>
-                      <TextField
-                        select
-                        size="small"
-                        label="Type"
-                        value={typeFilter}
-                        onChange={(e) => setTypeFilter(e.target.value)}
-                        SelectProps={{ native: true }}
-                        sx={{ minWidth: 130 }}
-                      >
-                        <option value="all">All Types</option>
-                        <option value="IN">📥 Stock In</option>
-                        <option value="OUT">📤 Stock Out (Orders)</option>
-                        <option value="DAMAGE">⚠️ Damage</option>
-                        <option value="ADJUSTMENT">🔄 Adjustment</option>
-                      </TextField>
+                        {(!dashboardData.pending_orders || dashboardData.pending_orders.length === 0) && (
+                          <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: 'rgba(0,0,0,0.3)', fontSize: 13 }}>No pending orders</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Sidebar cards */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, padding: '16px 20px' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Low Stock Alert</div>
+                      {dashboardData.low_stock.items.slice(0, 5).map((item: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: i < Math.min(dashboardData.low_stock.items.length, 5) - 1 ? '0.5px solid rgba(0,0,0,0.05)' : 'none' }}>
+                          <span style={{ fontSize: 12 }}>{item.product}{item.size ? ` (${item.size})` : ''}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: item.quantity_on_hand === 0 ? '#9f1239' : '#92400e', background: item.quantity_on_hand === 0 ? '#ffe4e6' : '#fef3c7', borderRadius: 10, padding: '1px 8px' }}>{item.quantity_on_hand}</span>
+                        </div>
+                      ))}
+                      {dashboardData.low_stock.items.length === 0 && <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.3)' }}>All stocked up!</div>}
+                    </div>
+                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, padding: '16px 20px' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Active Sites</div>
+                      <div style={{ fontSize: 28, fontWeight: 600 }}>{dashboardData.sites.active_sites}</div>
+                    </div>
+                    <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, padding: '16px 20px', flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Orders by Category</div>
+                      {(dashboardData.category_orders || []).slice(0, 6).map((cat: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '0.5px solid rgba(0,0,0,0.04)' }}>
+                          <span style={{ fontSize: 12 }}>{cat.category}</span>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: 'rgba(0,0,0,0.5)' }}>{cat.count || cat.total_orders || 0}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : <div style={{ textAlign: 'center', padding: 80, color: 'rgba(0,0,0,0.3)', fontSize: 13 }}>No data loaded.</div>}
+          </div>
+        )}
+
+        {/* ─── ORDERS ─── */}
+        {activeTab === 'orders' && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+              <input type="text" placeholder="Search orders…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ ...inputStyle, width: 240 }} />
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={selectStyle}>
+                <option value="all">All Statuses</option>
+                {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={selectStyle}>
+                <option value="all">All Categories</option>
+                {uniqueOrderCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)' }}>{filteredOrders.length} orders</span>
+            </div>
+            {loading ? <div style={{ display:'flex', justifyContent:'center', padding:80 }}><CircularProgress /></div> : (
+              <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr>
+                    {['Order #','Category','Site','City','Status','Total','Date','Items',''].map(h => (
+                      <th key={h} style={{ ...thStyle, textAlign: h === 'Total' ? 'right' : 'left' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {filteredOrders.map(order => (
+                      <tr key={order.id} className="data-row" style={{ cursor: 'pointer' }} onClick={() => viewOrder(order.id)}>
+                        <td style={tdStyle}><span style={{ fontFamily:'monospace', fontSize:11, background:'rgba(0,0,0,0.04)', borderRadius:6, padding:'2px 7px' }}>{order.voucher_number}</span></td>
+                        <td style={{ ...tdStyle, color:'rgba(0,0,0,0.5)' }}>{order.category || '—'}</td>
+                        <td style={{ ...tdStyle, fontWeight:500 }}>{order.site_name}</td>
+                        <td style={{ ...tdStyle, color:'rgba(0,0,0,0.5)' }}>{order.site_city}</td>
+                        <td style={tdStyle}><StatusBadge status={order.status} /></td>
+                        <td style={{ ...tdStyle, fontWeight:600, textAlign:'right' }}>${parseFloat(order.total_amount).toFixed(2)}</td>
+                        <td style={{ ...tdStyle, fontSize:12, color:'rgba(0,0,0,0.4)' }}>{new Date(order.order_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td>
+                        <td style={{ ...tdStyle, textAlign:'center' }}>{order.item_count}</td>
+                        <td style={tdStyle}><button onClick={e=>{e.stopPropagation();viewOrder(order.id);}} style={{...btnSecondary,padding:'4px 12px',fontSize:12}}>View</button></td>
+                      </tr>
+                    ))}
+                    {filteredOrders.length===0 && <tr><td colSpan={9} style={{textAlign:'center',padding:48,color:'rgba(0,0,0,0.3)',fontSize:13}}>No orders found</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── INVENTORY ─── */}
+        {activeTab === 'inventory' && (
+          <div>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+              <input type="text" placeholder="Search products…" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inputStyle,width:240}} />
+              <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={selectStyle}>
+                <option value="all">All Categories</option>
+                {uniqueCategories.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+              <span style={{fontSize:12,color:'rgba(0,0,0,0.35)'}}>{filteredStock.length} items</span>
+              <div style={{flex:1}} />
+              <button onClick={()=>window.open('/api/admin/inventory/export?format=pdf','_blank')} style={btnSecondary}>Export PDF</button>
+              <button onClick={()=>{const a=document.createElement('a');a.href='/api/admin/inventory/export?format=csv';a.download=`inventory-${new Date().toISOString().split('T')[0]}.csv`;a.click();}} style={btnSecondary}>Export CSV</button>
+              <button onClick={openBulkReceiveModal} style={btnSecondary}>Bulk Receive</button>
+              <button onClick={()=>setAddProductModal({open:true,mode:'new',submitting:false,product:'',category:'',sku:'',role:'All',size:'',unit:'unit',cost:'0',initialQuantity:'0'})} style={btnPrimary}>+ Add Product</button>
+            </div>
+            {loading ? <div style={{display:'flex',justifyContent:'center',padding:80}}><CircularProgress /></div> : (
+              <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.08)',borderRadius:14,overflow:'hidden'}}>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr>
+                    {['SKU','Product','Size','Category','Stock','Unit Cost','Value',''].map(h=>(
+                      <th key={h} style={{...thStyle, textAlign:h==='Stock'||h==='Unit Cost'||h==='Value'?'right':'left'}}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {filteredStock.map(item=>{
+                      const qty=item.quantity_on_hand;
+                      const qtyColor=qty===0?'#9f1239':qty<10?'#92400e':'#065f46';
+                      const qtyBg=qty===0?'#ffe4e6':qty<10?'#fef3c7':'transparent';
+                      const val=qty*parseFloat(item.cost);
+                      return (
+                        <tr key={item.item_id} className="data-row" style={{cursor:'pointer'}} onClick={()=>openStockViewModal(item)}>
+                          <td style={tdStyle}><span style={{fontFamily:'monospace',fontSize:11,background:'rgba(0,0,0,0.04)',borderRadius:6,padding:'2px 7px'}}>{item.sku}</span></td>
+                          <td style={{...tdStyle,fontWeight:500}}>{item.product}</td>
+                          <td style={{...tdStyle,color:'rgba(0,0,0,0.4)'}}>{(item as any).size||'—'}</td>
+                          <td style={{...tdStyle,color:'rgba(0,0,0,0.5)'}}>{item.category}</td>
+                          <td style={{...tdStyle,textAlign:'right'}}><span style={{fontWeight:600,color:qtyColor,background:qtyBg,borderRadius:10,padding:'1px 8px',display:'inline-block'}}>{qty}</span></td>
+                          <td style={{...tdStyle,textAlign:'right',color:'rgba(0,0,0,0.6)'}}>${parseFloat(item.cost).toFixed(2)}</td>
+                          <td style={{...tdStyle,textAlign:'right',fontWeight:600}}>${val.toFixed(2)}</td>
+                          <td style={tdStyle}><button onClick={e=>{e.stopPropagation();openStockViewModal(item);}} style={{...btnSecondary,padding:'4px 12px',fontSize:12}}>View</button></td>
+                        </tr>
+                      );
+                    })}
+                    {filteredStock.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:48,color:'rgba(0,0,0,0.3)',fontSize:13}}>No items found</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── SITES ─── */}
+        {activeTab === 'sites' && (
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+              <input type="text" placeholder="Search sites…" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inputStyle,width:240}} />
+              <span style={{fontSize:12,color:'rgba(0,0,0,0.35)'}}>{filteredSites.length} sites</span>
+              <div style={{flex:1}} />
+              <button onClick={()=>openSiteModal(null,true)} style={btnPrimary}>+ Add Site</button>
+            </div>
+            {loading ? <div style={{display:'flex',justifyContent:'center',padding:80}}><CircularProgress /></div> : (
+              <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.08)',borderRadius:14,overflow:'hidden'}}>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr>{['Code','Name','City','Contact','Phone','Status',''].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {filteredSites.map(site=>(
+                      <tr key={site.id} className="data-row">
+                        <td style={tdStyle}><span style={{fontFamily:'monospace',fontSize:11,background:'rgba(0,0,0,0.04)',borderRadius:6,padding:'2px 7px'}}>{site.site_code}</span></td>
+                        <td style={{...tdStyle,fontWeight:500}}>{site.name}</td>
+                        <td style={{...tdStyle,color:'rgba(0,0,0,0.5)'}}>{site.city}</td>
+                        <td style={{...tdStyle,color:'rgba(0,0,0,0.5)'}}>{site.contact_name||'—'}</td>
+                        <td style={{...tdStyle,fontFamily:'monospace',fontSize:12}}>{site.phone||'—'}</td>
+                        <td style={tdStyle}><span style={{background:site.status==='ACTIVE'?'#d1fae5':'#f3f4f6',color:site.status==='ACTIVE'?'#065f46':'#6b7280',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:600}}>{site.status}</span></td>
+                        <td style={tdStyle}><button onClick={()=>openSiteModal(site)} style={{...btnSecondary,padding:'4px 12px',fontSize:12}}>Edit</button></td>
+                      </tr>
+                    ))}
+                    {filteredSites.length===0&&<tr><td colSpan={7} style={{textAlign:'center',padding:48,color:'rgba(0,0,0,0.3)',fontSize:13}}>No sites found</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── REPORTS ─── */}
+        {activeTab === 'reports' && (
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,flexWrap:'wrap'}}>
+              <div style={{display:'flex',background:'rgba(0,0,0,0.04)',borderRadius:20,padding:3,gap:2}}>
+                {(['movements','site-analysis'] as ReportView[]).map(v=>(
+                  <button key={v} onClick={()=>setReportView(v)} style={{padding:'5px 14px',borderRadius:16,border:'none',cursor:'pointer',fontSize:12,fontFamily:'inherit',background:reportView===v?'#fff':'transparent',color:reportView===v?'#0a0a0a':'rgba(0,0,0,0.5)',boxShadow:reportView===v?'0 1px 3px rgba(0,0,0,0.08)':'none',fontWeight:reportView===v?500:400}}>
+                    {v==='movements'?'Stock Movements':'Site Analysis'}
+                  </button>
+                ))}
+              </div>
+              <input type="text" placeholder="Search…" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} style={{...inputStyle,width:180}} />
+              {reportView==='movements'&&(<>
+                <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={selectStyle}>
+                  <option value="all">All Categories</option>
+                  {movementCategories.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+                <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} style={selectStyle}>
+                  <option value="all">All Types</option>
+                  <option value="IN">Stock In</option>
+                  <option value="OUT">Stock Out</option>
+                  <option value="DAMAGE">Damage</option>
+                  <option value="ADJUSTMENT">Adjustment</option>
+                </select>
+              </>)}
+              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inputStyle} />
+              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inputStyle} />
+              <button onClick={()=>{if(reportView==='movements')loadStockHistory();else loadSiteTotals();}} style={btnPrimary}>Apply</button>
+              <button onClick={()=>{setDateFrom('');setDateTo('');setTimeout(()=>{if(reportView==='movements')loadStockHistory();else loadSiteTotals();},100);}} style={btnSecondary}>Clear</button>
+              <span style={{fontSize:12,color:'rgba(0,0,0,0.35)'}}>{reportView==='movements'?`${filteredHistory.length} movements`:`${filteredTotals.length} sites`}</span>
+              <div style={{flex:1}} />
+              <button onClick={reportView==='movements'?downloadStockMovementsCSV:downloadSiteAnalysisCSV} style={btnSecondary}>↓ CSV</button>
+            </div>
+
+            {loading ? <div style={{display:'flex',justifyContent:'center',padding:80}}><CircularProgress /></div> : reportView==='movements' ? (
+              <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.08)',borderRadius:14,overflow:'hidden'}}>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr>{['Date','SKU','Product','Type','Qty','Site','Voucher','Value','Reference'].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {filteredHistory.map(m=>{
+                      const isIn=m.movement_type==='IN'||(m.movement_type==='ADJUSTMENT'&&m.quantity>0);
+                      const val=m.stock_value?parseFloat(m.stock_value):Math.abs(m.quantity)*parseFloat(m.cost||'0');
+                      return (
+                        <tr key={m.id} className="data-row">
+                          <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.5)',whiteSpace:'nowrap'}}>{new Date(m.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</td>
+                          <td style={tdStyle}><span style={{fontFamily:'monospace',fontSize:11,background:'rgba(0,0,0,0.04)',borderRadius:6,padding:'2px 6px'}}>{m.sku}</span></td>
+                          <td style={{...tdStyle,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.product}</td>
+                          <td style={tdStyle}><MovementBadge type={m.movement_type} /></td>
+                          <td style={{...tdStyle,fontWeight:600,color:isIn?'#065f46':'#9f1239'}}>{isIn?'+':'−'}{Math.abs(m.quantity)}</td>
+                          <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.6)'}}>{m.site_name||'—'}</td>
+                          <td style={{...tdStyle,fontFamily:'monospace',fontSize:12}}>{m.order_number||'—'}</td>
+                          <td style={{...tdStyle,fontWeight:500,color:isIn?'#065f46':'#9f1239',textAlign:'right'}}>${val.toFixed(2)}</td>
+                          <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.4)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.reason||'—'}</td>
+                        </tr>
+                      );
+                    })}
+                    {filteredHistory.length===0&&<tr><td colSpan={9} style={{textAlign:'center',padding:48,color:'rgba(0,0,0,0.3)',fontSize:13}}>No movements found</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.08)',borderRadius:14,overflow:'hidden'}}>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr>{['Code','Site Name','City','Orders','Items Disp.','Total Value','Last Dispatch',''].map(h=><th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {filteredTotals.map(total=>(
+                      <tr key={total.site_id} className="data-row">
+                        <td style={tdStyle}><span style={{fontFamily:'monospace',fontSize:11,background:'rgba(0,0,0,0.04)',borderRadius:6,padding:'2px 7px'}}>{total.site_code}</span></td>
+                        <td style={{...tdStyle,fontWeight:500,cursor:'pointer',textDecoration:'underline',textDecorationColor:'rgba(0,0,0,0.2)'}} onClick={()=>loadSiteLedger(total)}>{total.site_name}</td>
+                        <td style={{...tdStyle,color:'rgba(0,0,0,0.5)'}}>{total.city}</td>
+                        <td style={{...tdStyle,fontWeight:600,textAlign:'center'}}>{total.total_orders}</td>
+                        <td style={{...tdStyle,textAlign:'right'}}>{total.total_items_dispatched}</td>
+                        <td style={{...tdStyle,fontWeight:600,textAlign:'right'}}>${parseFloat(total.total_value_dispatched||'0').toFixed(2)}</td>
+                        <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.4)'}}>{total.last_dispatch_date?new Date(total.last_dispatch_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+                        <td style={tdStyle}><button onClick={()=>loadSiteLedger(total)} style={{...btnSecondary,padding:'4px 12px',fontSize:12}}>View</button></td>
+                      </tr>
+                    ))}
+                    {filteredTotals.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:48,color:'rgba(0,0,0,0.3)',fontSize:13}}>No data found</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* ── ORDER SLIDE-IN PANEL ── */}
+      {orderModal.open && <div onClick={()=>setOrderModal({open:false,order:null,loading:false,dispatchInfo:null,customQty:{},dispatching:false,adjusting:false,adjustments:{},savingAdjustments:false})} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:199,backdropFilter:'blur(2px)'}} />}
+      <div style={{position:'fixed',top:0,right:0,bottom:0,width:580,background:'#fff',boxShadow:'-8px 0 40px rgba(0,0,0,0.08)',transform:orderModal.open?'translateX(0)':'translateX(100%)',transition:'transform 0.3s cubic-bezier(0.4,0,0.2,1)',zIndex:200,overflowY:'auto',display:'flex',flexDirection:'column'}}>
+        {orderModal.loading ? (
+          <div style={{display:'flex',justifyContent:'center',alignItems:'center',flex:1}}><CircularProgress /></div>
+        ) : orderModal.order ? (
+          <div className="print-area" style={{flex:1,display:'flex',flexDirection:'column'}}>
+            {/* Panel header */}
+            <div className="no-print" style={{padding:'16px 24px',borderBottom:'0.5px solid rgba(0,0,0,0.08)',display:'flex',alignItems:'center',gap:12,position:'sticky',top:0,background:'rgba(255,255,255,0.95)',backdropFilter:'blur(8px)',zIndex:10}}>
+              <button onClick={()=>setOrderModal({open:false,order:null,loading:false,dispatchInfo:null,customQty:{},dispatching:false,adjusting:false,adjustments:{},savingAdjustments:false})} className="icon-btn" style={{fontSize:18}}>✕</button>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:'monospace',fontSize:13,fontWeight:600}}>{orderModal.order.order_number}</div>
+                <div style={{fontSize:12,color:'rgba(0,0,0,0.4)'}}>{orderModal.order.site_name} · {orderModal.order.city}</div>
+              </div>
+              <StatusBadge status={orderModal.order.status} />
+              <button onClick={()=>window.print()} className="icon-btn" title="Print">⎙</button>
+            </div>
+            {/* Order meta */}
+            <div style={{padding:'14px 24px',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+                {[
+                  {label:'Category',value:orderModal.order.category},
+                  {label:'Requested by',value:orderModal.order.requested_by||'—'},
+                  {label:'Date',value:new Date(orderModal.order.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})},
+                  {label:'Total',value:`$${parseFloat(orderModal.order.total_amount).toFixed(2)}`},
+                  {label:'Dispatched by',value:orderModal.order.dispatched_by||'—'},
+                  {label:'Dispatch date',value:orderModal.order.dispatched_at?new Date(orderModal.order.dispatched_at).toLocaleDateString('en-GB'):'—'},
+                ].map((f,i)=>(
+                  <div key={i}>
+                    <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(0,0,0,0.35)',marginBottom:3}}>{f.label}</div>
+                    <div style={{fontSize:13}}>{f.value}</div>
+                  </div>
+                ))}
+              </div>
+              {orderModal.order.notes&&<div style={{marginTop:10,padding:'7px 12px',background:'rgba(0,0,0,0.03)',borderRadius:8,fontSize:12,color:'rgba(0,0,0,0.6)'}}>{orderModal.order.notes}</div>}
+            </div>
+            {/* Items */}
+            <div style={{flex:1,padding:'0 24px 16px'}}>
+              <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(0,0,0,0.35)',padding:'14px 0 8px'}}>Items</div>
+              <table style={{width:'100%',borderCollapse:'collapse'}}>
+                <thead><tr>
+                  {['SKU','Product','Sz','Requested','Dispatched',...(orderModal.dispatchInfo&&['PENDING','PARTIAL_DISPATCH','PROCESSING'].includes(orderModal.order.status)?['Stock','Dispatch Qty']:[])].map(h=>(
+                    <th key={h} style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'7px 8px',textAlign:h==='Requested'||h==='Dispatched'||h==='Stock'||h==='Dispatch Qty'?'center':'left',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)'}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {orderModal.order.items.map(item=>{
+                    const dispItem=orderModal.dispatchInfo?.items.find((d:any)=>d.id===item.id);
+                    const canDispatch=orderModal.dispatchInfo&&['PENDING','PARTIAL_DISPATCH','PROCESSING'].includes(orderModal.order!.status);
+                    return (
+                      <tr key={item.id} className="data-row">
+                        <td style={{fontSize:10,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle'}}><span style={{fontFamily:'monospace',background:'rgba(0,0,0,0.04)',borderRadius:4,padding:'1px 5px'}}>{item.sku}</span></td>
+                        <td style={{fontSize:12,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',fontWeight:500}}>{item.product}{item.employee_name?<span style={{fontSize:11,color:'rgba(0,0,0,0.4)',marginLeft:4}}>({item.employee_name})</span>:null}</td>
+                        <td style={{fontSize:12,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center',color:'rgba(0,0,0,0.5)'}}>{item.size||'—'}</td>
+                        <td style={{fontSize:13,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center',fontWeight:500}}>
+                          {orderModal.adjusting ? (
+                            <input type="number" min={1} max={item.quantity} value={orderModal.adjustments[item.id]??item.qty_approved??item.quantity} onChange={e=>setOrderModal(prev=>({...prev,adjustments:{...prev.adjustments,[item.id]:parseInt(e.target.value)||0}}))} style={{width:50,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,padding:'3px 6px',fontSize:12,textAlign:'center',fontFamily:'inherit'}} />
+                          ) : (
+                            item.qty_approved!=null&&item.qty_approved<item.quantity
+                              ?<><span style={{textDecoration:'line-through',color:'rgba(0,0,0,0.3)',marginRight:4}}>{item.quantity}</span><span style={{color:'#92400e',fontWeight:600}}>{item.qty_approved}</span></>
+                              :item.quantity
+                          )}
+                        </td>
+                        <td style={{fontSize:13,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center',color:item.qty_dispatched>0?'#065f46':'rgba(0,0,0,0.3)'}}>{item.qty_dispatched}</td>
+                        {canDispatch&&<>
+                          <td style={{fontSize:12,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center',color:(dispItem?.stock_available||0)===0?'#9f1239':'#065f46',fontWeight:600}}>{dispItem?.stock_available??'—'}</td>
+                          <td style={{fontSize:12,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center'}}>
+                            {(item.qty_approved??item.quantity)>item.qty_dispatched?(
+                              <input type="number" min={0} max={Math.min((item.qty_approved??item.quantity)-item.qty_dispatched,dispItem?.stock_available||0)} value={orderModal.customQty[item.id]??0} onChange={e=>setOrderModal(prev=>({...prev,customQty:{...prev.customQty,[item.id]:parseInt(e.target.value)||0}}))} style={{width:50,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,padding:'3px 6px',fontSize:12,textAlign:'center',fontFamily:'inherit'}} />
+                            ):<span style={{color:'#065f46',fontSize:13}}>✓</span>}
+                          </td>
+                        </>}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* Actions */}
+            <div className="no-print" style={{padding:'14px 24px',borderTop:'0.5px solid rgba(0,0,0,0.08)',background:'#fff',display:'flex',gap:8,flexWrap:'wrap'}}>
+              {['PENDING','PARTIAL_DISPATCH','PROCESSING'].includes(orderModal.order.status)&&(
+                <>
+                  {orderModal.adjusting ? (
+                    <>
+                      <button onClick={handleSaveAdjustments} disabled={orderModal.savingAdjustments} style={btnPrimary}>{orderModal.savingAdjustments?'Saving…':'Save Adjustments'}</button>
+                      <button onClick={()=>setOrderModal(prev=>({...prev,adjusting:false,adjustments:{}}))} style={btnSecondary}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={handleOrderModalDispatch} disabled={orderModal.dispatching} style={btnPrimary}>{orderModal.dispatching?'Dispatching…':'Dispatch'}</button>
+                      <button onClick={()=>setOrderModal(prev=>({...prev,adjusting:true}))} style={btnSecondary}>Adjust Qty</button>
+                      {showDeclineForm ? (
+                        <div style={{display:'flex',gap:8,alignItems:'center',flex:'1 1 100%'}}>
+                          <input placeholder="Decline reason…" value={declineInput} onChange={e=>setDeclineInput(e.target.value)} style={{...inputStyle,flex:1}} />
+                          <button onClick={()=>{handleDecline(declineInput);setShowDeclineForm(false);setDeclineInput('');}} style={btnDanger}>Confirm Decline</button>
+                          <button onClick={()=>setShowDeclineForm(false)} style={btnSecondary}>Cancel</button>
+                        </div>
+                      ) : (
+                        <button onClick={()=>setShowDeclineForm(true)} style={btnDanger}>Decline</button>
+                      )}
                     </>
                   )}
-                  <TextField
-                    type="date"
-                    size="small"
-                    label="From Date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ minWidth: 140 }}
-                  />
-                  <TextField
-                    type="date"
-                    size="small"
-                    label="To Date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ minWidth: 140 }}
-                  />
-                  <Button 
-                    variant="contained" 
-                    size="small"
-                    onClick={() => {
-                      if (reportView === 'movements') loadStockHistory();
-                      else loadSiteTotals();
-                    }}
-                  >
-                    Apply
-                  </Button>
-                  {(dateFrom || dateTo) && (
-                    <Button 
-                      variant="text" 
-                      size="small"
-                      onClick={() => {
-                        setDateFrom('');
-                        setDateTo('');
-                        setTimeout(() => {
-                          if (reportView === 'movements') loadStockHistory();
-                          else loadSiteTotals();
-                        }, 100);
-                      }}
-                    >
-                      Clear
-                    </Button>
-                  )}
-                  <Button 
-                    variant="outlined" 
-                    startIcon={<DownloadIcon />} 
-                    onClick={reportView === 'movements' ? downloadStockMovementsCSV : downloadSiteAnalysisCSV}
-                  >
-                    Download CSV
-                  </Button>
                 </>
               )}
-              <Box sx={{ flex: 1 }} />
-              <Typography variant="body2" color="text.secondary">
-                {activeTab === 'orders' ? `${filteredOrders.length} orders` : 
-                 activeTab === 'inventory' ? `${filteredStock.length} items` : 
-                 activeTab === 'sites' ? `${filteredSites.length} sites` :
-                 reportView === 'movements' ? `${filteredHistory.length} movements` :
-                 `${filteredTotals.length} sites`}
-              </Typography>
-            </Stack>
-          </Paper>
-          </>
-          )}
+            </div>
+          </div>
+        ) : null}
+      </div>
 
-          {/* Dashboard Content */}
-          {activeTab === 'dashboard' && (
-            <Box>
-              {dashboardLoading ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 8 }}>
-                  <CircularProgress />
-                </Box>
-              ) : dashboardData ? (
-                <>
-                  {/* Compact Stats Row */}
-                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 1.5, mb: 2 }}>
-                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'warning.main' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Pending Orders</Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
-                        <Typography variant="h5" fontWeight={600}>{dashboardData.orders.pending_orders}</Typography>
-                        <Typography variant="caption" color="text.secondary">${Number(dashboardData.orders.pending_value).toLocaleString()}</Typography>
-                      </Box>
-                    </Paper>
-                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'info.main' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Dispatched</Typography>
-                      <Typography variant="h5" fontWeight={600}>{dashboardData.orders.dispatched_orders}</Typography>
-                    </Paper>
-                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'success.main' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Received</Typography>
-                      <Typography variant="h5" fontWeight={600}>{dashboardData.orders.received_orders}</Typography>
-                    </Paper>
-                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'secondary.main' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Partial</Typography>
-                      <Typography variant="h5" fontWeight={600}>{dashboardData.orders.partial_orders}</Typography>
-                    </Paper>
-                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'error.main' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Low/Out Stock</Typography>
-                      <Typography variant="h5" fontWeight={600} color="error.main">{dashboardData.low_stock.count}</Typography>
-                    </Paper>
-                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderLeft: '3px solid', borderLeftColor: 'primary.main' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Inventory Value</Typography>
-                      <Typography variant="h5" fontWeight={600}>${Number(dashboardData.inventory.total_stock_value).toLocaleString()}</Typography>
-                    </Paper>
-                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Total Items</Typography>
-                      <Typography variant="h5" fontWeight={600}>{dashboardData.inventory.total_items}</Typography>
-                    </Paper>
-                    <Paper sx={{ p: 1.5, border: '1px solid', borderColor: 'divider' }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Active Sites</Typography>
-                      <Typography variant="h5" fontWeight={600}>{dashboardData.sites.active_sites}</Typography>
-                    </Paper>
-                  </Box>
-
-                  {/* Two Column Layout */}
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
-                    {/* Left Column */}
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      {/* Inventory by Category */}
-                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Inventory by Category</Typography>
-                        <Box component="table" sx={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                          <Box component="thead">
-                            <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                              <Box component="th" sx={{ py: 0.75, textAlign: 'left', fontWeight: 500, color: 'text.secondary' }}>Category</Box>
-                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Items</Box>
-                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Qty</Box>
-                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Value</Box>
-                            </Box>
-                          </Box>
-                          <Box component="tbody">
-                            {dashboardData.inventory.by_category.map((cat: any) => (
-                              <Box component="tr" key={cat.category} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                                <Box component="td" sx={{ py: 0.75, fontWeight: 500 }}>{cat.category}</Box>
-                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', color: 'text.secondary' }}>{cat.item_count}</Box>
-                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', color: 'text.secondary' }}>{Number(cat.total_qty).toLocaleString()}</Box>
-                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', fontWeight: 600 }}>${Number(cat.stock_value).toLocaleString()}</Box>
-                              </Box>
-                            ))}
-                          </Box>
-                        </Box>
-                      </Paper>
-
-                      {/* Recent Pending Orders */}
-                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Recent Pending Orders</Typography>
-                        {dashboardData.pending_orders.length > 0 ? (
-                          <Box sx={{ maxHeight: 180, overflow: 'auto' }}>
-                            {dashboardData.pending_orders.slice(0, 6).map((order: any) => (
-                              <Box 
-                                key={order.id} 
-                                sx={{ 
-                                  py: 0.75, 
-                                  px: 1,
-                                  mb: 0.5,
-                                  borderRadius: 0.5,
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  cursor: 'pointer',
-                                  fontSize: 12,
-                                  '&:hover': { bgcolor: 'action.hover' }
-                                }}
-                                onClick={() => { setActiveTab('orders'); setTimeout(() => viewOrder(order.id), 100); }}
-                              >
-                                <Box>
-                                  <Typography variant="body2" fontWeight={500} sx={{ fontSize: 12 }}>{order.voucher_number}</Typography>
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
-                                    {order.site_name}
-                                  </Typography>
-                                </Box>
-                                <Typography variant="body2" fontWeight={600} sx={{ fontSize: 12 }}>${Number(order.total_amount).toFixed(2)}</Typography>
-                              </Box>
-                            ))}
-                          </Box>
-                        ) : (
-                          <Typography variant="body2" color="success.main" sx={{ fontSize: 12 }}>✓ No pending orders</Typography>
-                        )}
-                      </Paper>
-                    </Box>
-
-                    {/* Right Column */}
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      {/* Orders by Category */}
-                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Orders This Period</Typography>
-                        <Box component="table" sx={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                          <Box component="thead">
-                            <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                              <Box component="th" sx={{ py: 0.75, textAlign: 'left', fontWeight: 500, color: 'text.secondary' }}>Category</Box>
-                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Orders</Box>
-                              <Box component="th" sx={{ py: 0.75, textAlign: 'right', fontWeight: 500, color: 'text.secondary' }}>Value</Box>
-                            </Box>
-                          </Box>
-                          <Box component="tbody">
-                            {dashboardData.category_orders.map((cat: any) => (
-                              <Box component="tr" key={cat.category} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                                <Box component="td" sx={{ py: 0.75, fontWeight: 500 }}>{cat.category}</Box>
-                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', color: 'text.secondary' }}>{cat.order_count}</Box>
-                                <Box component="td" sx={{ py: 0.75, textAlign: 'right', fontWeight: 600 }}>${Number(cat.total_value).toLocaleString()}</Box>
-                              </Box>
-                            ))}
-                          </Box>
-                        </Box>
-                      </Paper>
-
-                      {/* Stock Movements Summary */}
-                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Stock Movements</Typography>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Box sx={{ flex: 1, p: 1, bgcolor: 'success.50', borderRadius: 1, textAlign: 'center' }}>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>IN</Typography>
-                            <Typography variant="body1" fontWeight={600} color="success.main">{Number(dashboardData.movements.total_qty_in).toLocaleString()}</Typography>
-                          </Box>
-                          <Box sx={{ flex: 1, p: 1, bgcolor: 'info.50', borderRadius: 1, textAlign: 'center' }}>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>OUT</Typography>
-                            <Typography variant="body1" fontWeight={600} color="info.main">{Number(dashboardData.movements.total_qty_out).toLocaleString()}</Typography>
-                          </Box>
-                          <Box sx={{ flex: 1, p: 1, bgcolor: 'error.50', borderRadius: 1, textAlign: 'center' }}>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>DAMAGE</Typography>
-                            <Typography variant="body1" fontWeight={600} color="error.main">{Number(dashboardData.movements.total_qty_damaged).toLocaleString()}</Typography>
-                          </Box>
-                        </Box>
-                      </Paper>
-
-                      {/* Top Sites */}
-                      <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Top Ordering Sites</Typography>
-                        {dashboardData.sites.top_sites.length > 0 ? (
-                          <Box sx={{ maxHeight: 140, overflow: 'auto' }}>
-                            {dashboardData.sites.top_sites.slice(0, 5).map((site: any, idx: number) => (
-                              <Box 
-                                key={site.site_name} 
-                                sx={{ 
-                                  py: 0.5,
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  fontSize: 12,
-                                }}
-                              >
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <Typography variant="caption" sx={{ width: 16, color: idx === 0 ? 'success.main' : 'text.secondary', fontWeight: idx === 0 ? 700 : 400 }}>{idx + 1}.</Typography>
-                                  <Typography variant="body2" sx={{ fontSize: 12 }}>{site.site_name}</Typography>
-                                </Box>
-                                <Typography variant="body2" fontWeight={600} sx={{ fontSize: 12 }}>${Number(site.total_value).toLocaleString()}</Typography>
-                              </Box>
-                            ))}
-                          </Box>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12 }}>No orders in period</Typography>
-                        )}
-                      </Paper>
-                    </Box>
-                  </Box>
-
-                  {/* Low Stock Items - Full Width */}
-                  <Paper sx={{ p: 2, border: '1px solid', borderColor: 'error.200', bgcolor: 'error.50' }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'error.dark' }}>
-                        ⚠️ Low Stock Alert ({dashboardData.low_stock.count} items)
-                      </Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Button 
-                          size="small" 
-                          variant="outlined"
-                          startIcon={<DownloadIcon />}
-                          onClick={() => {
-                            const items = dashboardData?.low_stock?.items || [];
-                            const csv = [
-                              ['SKU', 'Product', 'Category', 'Size', 'On Hand', 'Reorder Level', 'Status'].join(','),
-                              ...items.map((i: any) => [
-                                i.sku, i.product, i.category, i.size || '', i.quantity_on_hand, i.reorder_level, i.stock_status
-                              ].join(','))
-                            ].join('\n');
-                            const blob = new Blob([csv], { type: 'text/csv' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `low-stock-${new Date().toISOString().split('T')[0]}.csv`;
-                            a.click();
-                          }}
-                          sx={{ fontSize: 11 }}
-                        >
-                          CSV
-                        </Button>
-                        <Button 
-                          size="small" 
-                          variant="outlined"
-                          startIcon={<PrintIcon />}
-                          onClick={() => {
-                            const items = dashboardData?.low_stock?.items || [];
-                            const html = `<html><head><title>Low Stock Report</title><style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}.out{background:#ffebee}.low{background:#fff3e0}</style></head><body><h2>Low Stock Report - ${new Date().toLocaleDateString()}</h2><table><tr><th>SKU</th><th>Product</th><th>Category</th><th>Size</th><th>On Hand</th><th>Status</th></tr>${items.map((i: any) => `<tr class="${i.stock_status === 'OUT_OF_STOCK' ? 'out' : 'low'}"><td>${i.sku}</td><td>${i.product}</td><td>${i.category}</td><td>${i.size || '-'}</td><td>${i.quantity_on_hand}</td><td>${i.stock_status === 'OUT_OF_STOCK' ? 'OUT' : 'LOW'}</td></tr>`).join('')}</table></body></html>`;
-                            const w = window.open('', '_blank');
-                            w?.document.write(html);
-                            w?.document.close();
-                            w?.print();
-                          }}
-                          sx={{ fontSize: 11 }}
-                        >
-                          Print
-                        </Button>
-                      </Stack>
-                    </Box>
-                    {dashboardData.low_stock.items.length > 0 ? (
-                      <Box sx={{ maxHeight: 200, overflow: 'auto', bgcolor: 'background.paper', borderRadius: 1 }}>
-                        <Box component="table" sx={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
-                          <Box component="thead" sx={{ position: 'sticky', top: 0, bgcolor: 'background.paper' }}>
-                            <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'left', fontWeight: 500 }}>SKU</Box>
-                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'left', fontWeight: 500 }}>Product</Box>
-                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'left', fontWeight: 500 }}>Category</Box>
-                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'left', fontWeight: 500 }}>Size</Box>
-                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'right', fontWeight: 500 }}>On Hand</Box>
-                              <Box component="th" sx={{ py: 0.5, px: 1, textAlign: 'center', fontWeight: 500 }}>Status</Box>
-                            </Box>
-                          </Box>
-                          <Box component="tbody">
-                            {dashboardData.low_stock.items.map((item: any) => (
-                              <Box 
-                                component="tr" 
-                                key={item.id} 
-                                sx={{ 
-                                  '&:hover': { bgcolor: 'action.hover' },
-                                  bgcolor: item.stock_status === 'OUT_OF_STOCK' ? 'error.50' : 'warning.50'
-                                }}
-                              >
-                                <Box component="td" sx={{ py: 0.5, px: 1 }}><code style={{ fontSize: 10 }}>{item.sku}</code></Box>
-                                <Box component="td" sx={{ py: 0.5, px: 1 }}>{item.product}</Box>
-                                <Box component="td" sx={{ py: 0.5, px: 1 }}>{item.category}</Box>
-                                <Box component="td" sx={{ py: 0.5, px: 1 }}>{item.size || '-'}</Box>
-                                <Box component="td" sx={{ py: 0.5, px: 1, textAlign: 'right', fontWeight: 700 }}>{item.quantity_on_hand}</Box>
-                                <Box component="td" sx={{ py: 0.5, px: 1, textAlign: 'center' }}>
-                                  <Chip 
-                                    label={item.stock_status === 'OUT_OF_STOCK' ? 'OUT' : 'LOW'} 
-                                    color={item.stock_status === 'OUT_OF_STOCK' ? 'error' : 'warning'} 
-                                    size="small" 
-                                    sx={{ height: 18, fontSize: 10 }}
-                                  />
-                                </Box>
-                              </Box>
-                            ))}
-                          </Box>
-                        </Box>
-                      </Box>
-                    ) : (
-                      <Typography variant="body2" color="success.main" sx={{ fontSize: 12 }}>✓ All items adequately stocked</Typography>
-                    )}
-                  </Paper>
-                </>
-              ) : (
-                <Paper sx={{ p: 4, textAlign: 'center' }}>
-                  <Typography color="text.secondary">No dashboard data available</Typography>
-                </Paper>
-              )}
-            </Box>
-          )}
-
-          {/* Data Grid - Only show for non-dashboard tabs */}
-          {activeTab !== 'dashboard' && (
-          <Paper sx={{ height: 600 }}>
-            {loading ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <DataGrid
-                rows={
-                  activeTab === 'orders' ? filteredOrders : 
-                  activeTab === 'inventory' ? filteredStock.map(s => ({ ...s, id: s.item_id })) : 
-                  activeTab === 'sites' ? filteredSites :
-                  reportView === 'movements' ? filteredHistory :
-                  filteredTotals.map(t => ({ ...t, id: t.site_id }))
-                }
-                columns={
-                  activeTab === 'orders' ? ordersColumns : 
-                  activeTab === 'inventory' ? inventoryColumns : 
-                  activeTab === 'sites' ? sitesColumns :
-                  reportView === 'movements' ? historyColumns : totalsColumns
-                }
-                pageSizeOptions={[10, 25, 50, 100]}
-                initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-                disableRowSelectionOnClick
-                rowHeight={60}
-                sx={{
-                  border: 'none',
-                  '& .MuiDataGrid-cell': { 
-                    py: 1.5,
-                    display: 'flex',
-                    alignItems: 'center',
-                  },
-                  '& .MuiDataGrid-columnHeaders': { 
-                    bgcolor: 'grey.50',
-                    borderBottom: '2px solid',
-                    borderColor: 'divider',
-                  },
-                  '& .MuiDataGrid-row': {
-                    '&:hover': { bgcolor: 'action.hover' },
-                  },
-                  '& .MuiDataGrid-columnHeaderTitle': {
-                    fontWeight: 600,
-                  },
-                }}
-              />
-            )}
-          </Paper>
-          )}
-        </Box>
-
-        {/* Stock Modal (legacy - keep for compatibility) */}
-        <Dialog open={stockModal.open} onClose={() => setStockModal({ ...stockModal, open: false })} maxWidth="xs" fullWidth>
-          <DialogTitle>{stockModal.action === 'add' ? 'Add Stock' : 'Dispatch Stock'}</DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {stockModal.item?.product} ({stockModal.item?.sku})
-              <br />
-              Current stock: <strong>{stockModal.item?.quantity_on_hand}</strong>
-            </Typography>
-            <TextField
-              autoFocus
-              fullWidth
-              type="number"
-              label="Quantity"
-              value={stockModal.quantity}
-              onChange={(e) => setStockModal({ ...stockModal, quantity: e.target.value })}
-              inputProps={{ min: 1 }}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setStockModal({ ...stockModal, open: false })}>Cancel</Button>
-            <Button variant="contained" color={stockModal.action === 'add' ? 'success' : 'warning'} onClick={handleStockAction}>
-              {stockModal.action === 'add' ? 'Add Stock' : 'Dispatch'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Stock View Modal - Item History with Add/Remove Actions */}
-        <Dialog 
-          open={stockViewModal.open} 
-          onClose={() => setStockViewModal({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '', editingCost: false, newCost: '' })} 
-          maxWidth="md" 
-          fullWidth
-        >
-          <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box>
-              <Typography variant="h6">Stock Item Details</Typography>
-              {stockViewModal.item && (
-                <Typography variant="body2" color="text.secondary">
-                  {stockViewModal.item.product} ({stockViewModal.item.sku})
-                </Typography>
-              )}
-            </Box>
-            <IconButton onClick={() => setStockViewModal({ open: false, item: null, history: [], loading: false, action: 'none', quantity: '', reason: '', editingCost: false, newCost: '' })}>
-              <CloseIcon />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent dividers>
-            {/* Stock Summary */}
-            {stockViewModal.item && (
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
-                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
-                  <Typography variant="caption" color="text.secondary">Current Stock</Typography>
-                  <Typography variant="h5" fontWeight={700} color={stockViewModal.item.quantity_on_hand === 0 ? 'error.main' : stockViewModal.item.quantity_on_hand < 10 ? 'warning.main' : 'success.main'}>
-                    {stockViewModal.item.quantity_on_hand}
-                  </Typography>
-                </Box>
-                <Box sx={{ p: 2, bgcolor: stockViewModal.editingCost ? 'primary.50' : 'grey.50', borderRadius: 1, textAlign: 'center', position: 'relative' }}>
-                  <Typography variant="caption" color="text.secondary">Unit Cost</Typography>
-                  {stockViewModal.editingCost ? (
-                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ mt: 0.5 }}>
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={stockViewModal.newCost}
-                        onChange={(e) => setStockViewModal(prev => ({ ...prev, newCost: e.target.value }))}
-                        inputProps={{ min: 0, step: 0.01 }}
-                        sx={{ width: 80 }}
-                        autoFocus
-                      />
-                      <IconButton size="small" color="success" onClick={handleUpdateCost}>
-                        <AddIcon />
-                      </IconButton>
-                      <IconButton size="small" onClick={() => setStockViewModal(prev => ({ ...prev, editingCost: false, newCost: '' }))}>
-                        <CloseIcon fontSize="small" />
-                      </IconButton>
-                    </Stack>
-                  ) : (
-                    <Box sx={{ cursor: 'pointer' }} onClick={() => setStockViewModal(prev => ({ ...prev, editingCost: true, newCost: prev.item?.cost || '' }))}>
-                      <Typography variant="h5" fontWeight={700}>${parseFloat(stockViewModal.item.cost).toFixed(2)}</Typography>
-                      <Typography variant="caption" color="primary.main">Click to edit</Typography>
-                    </Box>
+      {/* ── STOCK VIEW SLIDE-IN PANEL ── */}
+      {stockViewModal.open&&<div onClick={()=>setStockViewModal({open:false,item:null,history:[],loading:false,action:'none',quantity:'',reason:'',editingCost:false,newCost:''})} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:199,backdropFilter:'blur(2px)'}} />}
+      <div style={{position:'fixed',top:0,right:0,bottom:0,width:480,background:'#fff',boxShadow:'-8px 0 40px rgba(0,0,0,0.08)',transform:stockViewModal.open?'translateX(0)':'translateX(100%)',transition:'transform 0.3s cubic-bezier(0.4,0,0.2,1)',zIndex:200,overflowY:'auto',display:'flex',flexDirection:'column'}}>
+        {stockViewModal.item ? (
+          <>
+            <div style={{padding:'16px 24px',borderBottom:'0.5px solid rgba(0,0,0,0.08)',display:'flex',alignItems:'center',gap:12,position:'sticky',top:0,background:'rgba(255,255,255,0.95)',backdropFilter:'blur(8px)',zIndex:10}}>
+              <button onClick={()=>setStockViewModal({open:false,item:null,history:[],loading:false,action:'none',quantity:'',reason:'',editingCost:false,newCost:''})} className="icon-btn" style={{fontSize:18}}>✕</button>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:'monospace',fontSize:13,fontWeight:600}}>{stockViewModal.item.sku}</div>
+                <div style={{fontSize:12,color:'rgba(0,0,0,0.4)'}}>{stockViewModal.item.product}{(stockViewModal.item as any).size?` · ${(stockViewModal.item as any).size}`:''}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:22,fontWeight:600,color:stockViewModal.item.quantity_on_hand===0?'#9f1239':stockViewModal.item.quantity_on_hand<10?'#92400e':'#0a0a0a'}}>{stockViewModal.item.quantity_on_hand}</div>
+                <div style={{fontSize:11,color:'rgba(0,0,0,0.35)'}}>on hand</div>
+              </div>
+            </div>
+            <div style={{padding:'14px 24px',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14}}>
+                <div><div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(0,0,0,0.35)',marginBottom:3}}>Category</div><div style={{fontSize:13}}>{stockViewModal.item.category}</div></div>
+                <div><div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(0,0,0,0.35)',marginBottom:3}}>Unit</div><div style={{fontSize:13}}>{stockViewModal.item.unit}</div></div>
+                <div>
+                  <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(0,0,0,0.35)',marginBottom:3}}>Unit Cost</div>
+                  {stockViewModal.editingCost?(
+                    <div style={{display:'flex',gap:4}}>
+                      <input type="number" step="0.01" value={stockViewModal.newCost} onChange={e=>setStockViewModal(prev=>({...prev,newCost:e.target.value}))} style={{width:70,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,padding:'3px 6px',fontSize:12,fontFamily:'inherit'}} />
+                      <button onClick={handleUpdateCost} style={{background:'#0a0a0a',color:'#fff',border:'none',borderRadius:6,padding:'3px 8px',fontSize:12,cursor:'pointer'}}>✓</button>
+                      <button onClick={()=>setStockViewModal(prev=>({...prev,editingCost:false,newCost:''}))} style={{background:'transparent',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:6,padding:'3px 6px',fontSize:12,cursor:'pointer'}}>✕</button>
+                    </div>
+                  ):(
+                    <div style={{fontSize:13,cursor:'pointer'}} onClick={()=>setStockViewModal(prev=>({...prev,editingCost:true,newCost:prev.item!.cost}))}>
+                      ${parseFloat(stockViewModal.item.cost).toFixed(2)} <span style={{fontSize:11,color:'rgba(0,0,0,0.35)'}}>edit</span>
+                    </div>
                   )}
-                </Box>
-                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
-                  <Typography variant="caption" color="text.secondary">Stock Value</Typography>
-                  <Typography variant="h5" fontWeight={700}>${(stockViewModal.item.quantity_on_hand * parseFloat(stockViewModal.item.cost)).toFixed(2)}</Typography>
-                </Box>
-                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
-                  <Typography variant="caption" color="text.secondary">Category</Typography>
-                  <Typography variant="body1" fontWeight={600}>{stockViewModal.item.category}</Typography>
-                </Box>
-              </Box>
-            )}
-
-            {/* Transaction History */}
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Transaction History (Last 30 Days)</Typography>
-            <Paper variant="outlined" sx={{ maxHeight: 280, overflow: 'auto', mb: 3 }}>
-              {stockViewModal.loading ? (
-                <Box sx={{ p: 4, textAlign: 'center' }}>
-                  <CircularProgress size={24} />
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Loading history...</Typography>
-                </Box>
-              ) : stockViewModal.history.length === 0 ? (
-                <Box sx={{ p: 4, textAlign: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">No transactions found</Typography>
-                </Box>
-              ) : (
-                <Box component="table" sx={{ width: '100%', fontSize: 13 }}>
-                  <Box component="thead" sx={{ bgcolor: 'grey.100', position: 'sticky', top: 0 }}>
-                    <Box component="tr">
-                      <Box component="th" sx={{ p: 1.5, textAlign: 'left' }}>Date</Box>
-                      <Box component="th" sx={{ p: 1.5, textAlign: 'center' }}>Type</Box>
-                      <Box component="th" sx={{ p: 1.5, textAlign: 'right' }}>Qty</Box>
-                      <Box component="th" sx={{ p: 1.5, textAlign: 'left' }}>Reference</Box>
-                      <Box component="th" sx={{ p: 1.5, textAlign: 'left' }}>By</Box>
-                    </Box>
-                  </Box>
-                  <Box component="tbody">
-                    {stockViewModal.history.map((movement) => (
-                      <Box component="tr" key={movement.id} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                        <Box component="td" sx={{ p: 1.5 }}>
-                          <Typography variant="body2">{new Date(movement.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</Typography>
-                          <Typography variant="caption" color="text.secondary">{new Date(movement.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</Typography>
-                        </Box>
-                        <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
-                          <Chip 
-                            size="small" 
-                            label={movement.movement_type} 
-                            color={movement.movement_type === 'IN' ? 'success' : 'warning'}
-                            sx={{ fontSize: 11 }}
-                          />
-                        </Box>
-                        <Box component="td" sx={{ p: 1.5, textAlign: 'right' }}>
-                          <Typography variant="body2" fontWeight={600} color={movement.movement_type === 'IN' ? 'success.main' : 'warning.main'}>
-                            {movement.movement_type === 'IN' ? '+' : '−'}{Math.abs(movement.quantity)}
-                          </Typography>
-                        </Box>
-                        <Box component="td" sx={{ p: 1.5 }}>
-                          <Typography variant="body2" noWrap sx={{ maxWidth: 140 }}>
-                            {movement.site_name || movement.reason || '—'}
-                          </Typography>
-                          {movement.order_number && (
-                            <Typography variant="caption" color="primary.main">#{movement.order_number}</Typography>
-                          )}
-                        </Box>
-                        <Box component="td" sx={{ p: 1.5 }}>
-                          <Typography variant="body2" noWrap sx={{ maxWidth: 120 }} color="text.secondary">
-                            {movement.created_by || '—'}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-              )}
-            </Paper>
-
-            {/* Action Forms */}
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Stock Actions</Typography>
-            <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-              <Button 
-                variant={stockViewModal.action === 'add' ? 'contained' : 'outlined'} 
-                color="success" 
-                startIcon={<AddIcon />}
-                onClick={() => setStockViewModal(prev => ({ ...prev, action: prev.action === 'add' ? 'none' : 'add', quantity: '', reason: '' }))}
-              >
-                Add Stock
-              </Button>
-              <Button 
-                variant={stockViewModal.action === 'remove' ? 'contained' : 'outlined'} 
-                color="error" 
-                startIcon={<RemoveIcon />}
-                onClick={() => setStockViewModal(prev => ({ ...prev, action: prev.action === 'remove' ? 'none' : 'remove', quantity: '', reason: '' }))}
-                disabled={stockViewModal.item?.quantity_on_hand === 0}
-              >
-                Remove Stock
-              </Button>
-            </Stack>
-
-            {stockViewModal.action !== 'none' && (
-              <Paper variant="outlined" sx={{ p: 2, bgcolor: stockViewModal.action === 'add' ? 'success.50' : 'error.50' }}>
-                <Stack direction="row" spacing={2} alignItems="flex-start">
-                  <TextField
-                    size="small"
-                    type="number"
-                    label="Quantity"
-                    value={stockViewModal.quantity}
-                    onChange={(e) => setStockViewModal(prev => ({ ...prev, quantity: e.target.value }))}
-                    inputProps={{ min: 1 }}
-                    sx={{ width: 120 }}
-                  />
-                  {stockViewModal.action === 'remove' && (
-                    <TextField
-                      select
-                      size="small"
-                      label="Reason"
-                      value={stockViewModal.reason}
-                      onChange={(e) => setStockViewModal(prev => ({ ...prev, reason: e.target.value }))}
-                      SelectProps={{ native: true }}
-                      sx={{ minWidth: 200 }}
-                    >
-                      <option value="">Select reason...</option>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                <select value={stockViewModal.action} onChange={e=>setStockViewModal(prev=>({...prev,action:e.target.value as 'none'|'add'|'remove'}))} style={selectStyle}>
+                  <option value="none">Select action…</option>
+                  <option value="add">Add stock</option>
+                  <option value="remove">Remove stock</option>
+                </select>
+                {stockViewModal.action!=='none'&&(<>
+                  <input type="number" min={1} placeholder="Qty" value={stockViewModal.quantity} onChange={e=>setStockViewModal(prev=>({...prev,quantity:e.target.value}))} style={{...inputStyle,width:72}} />
+                  {stockViewModal.action==='remove'&&(
+                    <select value={stockViewModal.reason} onChange={e=>setStockViewModal(prev=>({...prev,reason:e.target.value}))} style={selectStyle}>
+                      <option value="">Reason…</option>
                       <option value="DAMAGED">Damaged</option>
-                      <option value="RETURN_TO_SUPPLIER">Return to Supplier</option>
-                      <option value="EXPIRED">Expired</option>
-                      <option value="LOST">Lost/Missing</option>
-                      <option value="STOCK_TAKE_ADJUSTMENT">Stock Take Adjustment</option>
+                      <option value="RETURN_TO_SUPPLIER">Return to supplier</option>
+                      <option value="WRITE_OFF">Write off</option>
                       <option value="OTHER">Other</option>
-                    </TextField>
+                    </select>
                   )}
-                  {stockViewModal.action === 'add' && (
-                    <TextField
-                      size="small"
-                      label="Reference (optional)"
-                      placeholder="GRN #, Invoice #, etc."
-                      value={stockViewModal.reason}
-                      onChange={(e) => setStockViewModal(prev => ({ ...prev, reason: e.target.value }))}
-                      sx={{ flex: 1 }}
-                    />
-                  )}
-                  <Button 
-                    variant="contained" 
-                    color={stockViewModal.action === 'add' ? 'success' : 'error'}
-                    onClick={handleStockViewAction}
-                    disabled={!stockViewModal.quantity || (stockViewModal.action === 'remove' && !stockViewModal.reason)}
-                  >
-                    {stockViewModal.action === 'add' ? 'Add' : 'Remove'}
-                  </Button>
-                </Stack>
-              </Paper>
-            )}
-          </DialogContent>
-        </Dialog>
+                  <button onClick={handleStockViewAction} style={stockViewModal.action==='add'?btnPrimary:btnDanger}>
+                    {stockViewModal.action==='add'?'+ Add':'− Remove'}
+                  </button>
+                </>)}
+              </div>
+            </div>
+            <div style={{flex:1,padding:'0 24px 24px'}}>
+              <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(0,0,0,0.35)',padding:'14px 0 8px'}}>Movement History</div>
+              {stockViewModal.loading?<div style={{display:'flex',justifyContent:'center',padding:24}}><CircularProgress size={20} /></div>:(
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr>{['Date','Type','Qty','Reference'].map(h=><th key={h} style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'7px 8px',textAlign:'left',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)'}}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {stockViewModal.history.slice(0,30).map(m=>{
+                      const isIn=m.movement_type==='IN'||(m.movement_type==='ADJUSTMENT'&&m.quantity>0);
+                      return (
+                        <tr key={m.id}>
+                          <td style={{fontSize:11,padding:'7px 8px',borderBottom:'0.5px solid rgba(0,0,0,0.04)',verticalAlign:'middle',color:'rgba(0,0,0,0.4)'}}>{new Date(m.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</td>
+                          <td style={{fontSize:11,padding:'7px 8px',borderBottom:'0.5px solid rgba(0,0,0,0.04)',verticalAlign:'middle'}}><MovementBadge type={m.movement_type} /></td>
+                          <td style={{fontSize:13,padding:'7px 8px',borderBottom:'0.5px solid rgba(0,0,0,0.04)',verticalAlign:'middle',fontWeight:600,color:isIn?'#065f46':'#9f1239'}}>{isIn?'+':'−'}{Math.abs(m.quantity)}</td>
+                          <td style={{fontSize:11,padding:'7px 8px',borderBottom:'0.5px solid rgba(0,0,0,0.04)',verticalAlign:'middle',color:'rgba(0,0,0,0.45)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.order_number||m.reason||'—'}</td>
+                        </tr>
+                      );
+                    })}
+                    {stockViewModal.history.length===0&&<tr><td colSpan={4} style={{textAlign:'center',padding:24,color:'rgba(0,0,0,0.3)',fontSize:12}}>No history</td></tr>}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        ) : null}
+      </div>
 
-        {/* Bulk Receive Modal */}
-        <Dialog open={bulkReceiveModal.open} onClose={() => setBulkReceiveModal({ open: false, items: [], grnNumber: '', submitting: false })} maxWidth="md" fullWidth>
-          <DialogTitle>Bulk Receive Stock</DialogTitle>
-          <DialogContent>
-            <TextField
-              fullWidth
-              label="GRN / Invoice Number"
-              placeholder="e.g. GRN-2026-001"
-              value={bulkReceiveModal.grnNumber}
-              onChange={(e) => setBulkReceiveModal({ ...bulkReceiveModal, grnNumber: e.target.value })}
-              sx={{ mb: 3, mt: 1 }}
-            />
-            <Paper variant="outlined" sx={{ maxHeight: 400, overflow: 'auto' }}>
-              <Box component="table" sx={{ width: '100%', fontSize: 14 }}>
-                <Box component="thead" sx={{ bgcolor: 'grey.100', position: 'sticky', top: 0 }}>
-                  <Box component="tr">
-                    <Box component="th" sx={{ p: 2, textAlign: 'left' }}>SKU</Box>
-                    <Box component="th" sx={{ p: 2, textAlign: 'left' }}>Product</Box>
-                    <Box component="th" sx={{ p: 2, textAlign: 'right', width: 120 }}>Qty</Box>
-                  </Box>
-                </Box>
-                <Box component="tbody">
-                  {bulkReceiveModal.items.map((item, idx) => (
-                    <Box component="tr" key={item.item_id} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                      <Box component="td" sx={{ p: 2, fontFamily: 'monospace', fontSize: 12 }}>{item.sku}</Box>
-                      <Box component="td" sx={{ p: 2 }}>{item.product}</Box>
-                      <Box component="td" sx={{ p: 1 }}>
-                        <TextField
-                          size="small"
-                          type="number"
-                          placeholder="0"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const newItems = [...bulkReceiveModal.items];
-                            newItems[idx].quantity = e.target.value;
-                            setBulkReceiveModal({ ...bulkReceiveModal, items: newItems });
-                          }}
-                          inputProps={{ min: 0, style: { textAlign: 'right' } }}
-                          sx={{ width: 100 }}
-                        />
-                      </Box>
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-            </Paper>
-          </DialogContent>
-          <DialogActions>
-            <Typography variant="body2" color="text.secondary" sx={{ flex: 1, pl: 2 }}>
-              {bulkReceiveModal.items.filter((i) => i.quantity && parseInt(i.quantity) > 0).length} items to receive
-            </Typography>
-            <Button onClick={() => setBulkReceiveModal({ open: false, items: [], grnNumber: '', submitting: false })}>Cancel</Button>
-            <Button variant="contained" onClick={handleBulkReceive} disabled={bulkReceiveModal.submitting}>
-              {bulkReceiveModal.submitting ? 'Processing...' : 'Receive Stock'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Add Product Modal */}
-        <Dialog open={addProductModal.open} onClose={() => setAddProductModal({ ...addProductModal, open: false })} maxWidth="sm" fullWidth>
-          <DialogTitle>Add New Product</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                label="Product Name *"
-                fullWidth
-                value={addProductModal.product}
-                onChange={(e) => setAddProductModal({ ...addProductModal, product: e.target.value })}
-                placeholder="e.g. Fire Extinguisher"
-              />
-              <TextField
-                label="Category *"
-                select
-                fullWidth
-                value={addProductModal.category}
-                onChange={(e) => setAddProductModal({ ...addProductModal, category: e.target.value })}
-                SelectProps={{ native: true }}
-              >
-                <option value="">Select Category</option>
-                <option value="Consumable">Consumable</option>
-                <option value="Equipment">Equipment</option>
-                <option value="PPE">PPE</option>
-                <option value="Stationery">Stationery</option>
-                <option value="Uniforms">Uniforms</option>
-              </TextField>
-              <TextField
-                label="SKU (optional - auto-generated if blank)"
-                fullWidth
-                value={addProductModal.sku}
-                onChange={(e) => setAddProductModal({ ...addProductModal, sku: e.target.value.toUpperCase() })}
-                placeholder="e.g. PPE-FIRE-EXT"
-              />
-              <Stack direction="row" spacing={2}>
-                <TextField
-                  label="Role"
-                  fullWidth
-                  value={addProductModal.role}
-                  onChange={(e) => setAddProductModal({ ...addProductModal, role: e.target.value })}
-                  placeholder="e.g. All, Forecourt, Cashier"
-                />
-                <TextField
-                  label="Size"
-                  fullWidth
-                  value={addProductModal.size}
-                  onChange={(e) => setAddProductModal({ ...addProductModal, size: e.target.value })}
-                  placeholder="e.g. M, L, XL"
-                />
-              </Stack>
-              <Stack direction="row" spacing={2}>
-                <TextField
-                  label="Unit"
-                  fullWidth
-                  value={addProductModal.unit}
-                  onChange={(e) => setAddProductModal({ ...addProductModal, unit: e.target.value })}
-                  placeholder="e.g. unit, pair, roll"
-                />
-                <TextField
-                  label="Cost ($)"
-                  type="number"
-                  fullWidth
-                  value={addProductModal.cost}
-                  onChange={(e) => setAddProductModal({ ...addProductModal, cost: e.target.value })}
-                  inputProps={{ min: 0, step: 0.01 }}
-                />
-              </Stack>
-              <TextField
-                label="Initial Quantity"
-                type="number"
-                fullWidth
-                value={addProductModal.initialQuantity}
-                onChange={(e) => setAddProductModal({ ...addProductModal, initialQuantity: e.target.value })}
-                inputProps={{ min: 0 }}
-                helperText="Optional: Add initial stock quantity"
-              />
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setAddProductModal({ ...addProductModal, open: false })}>Cancel</Button>
-            <Button 
-              variant="contained" 
-              onClick={handleAddProduct} 
-              disabled={addProductModal.submitting || !addProductModal.product || !addProductModal.category}
-              sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }}
-            >
-              {addProductModal.submitting ? 'Adding...' : 'Add Product'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Order View Modal */}
-        <Dialog open={orderModal.open} onClose={() => setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false })} maxWidth="lg" fullWidth>
-          {orderModal.loading ? (
-            <Box sx={{ p: 8, textAlign: 'center' }} className="no-print">
-              <CircularProgress />
-              <Typography sx={{ mt: 2 }}>Loading order details...</Typography>
-            </Box>
-          ) : orderModal.order ? (
-            <>
-              <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="no-print">
-                <span>Order {orderModal.order.order_number}</span>
-                <IconButton onClick={() => setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false })}>
-                  <CloseIcon />
-                </IconButton>
-              </DialogTitle>
-              <DialogContent dividers className="print-content">
-                {/* Print Header - only visible when printing */}
-                <Box className="print-only" sx={{ 
-                  display: 'none', 
-                  textAlign: 'center', 
-                  mb: 3, 
-                  pb: 2, 
-                  borderBottom: '3px solid #006633',
-                  '@media print': { display: 'block' }
-                }}>
-                  <Typography variant="h4" sx={{ color: '#006633', fontWeight: 700 }}>REDAN COUPON</Typography>
-                  <Typography variant="h6">
-                    {orderModal.order.status === 'PARTIAL_DISPATCH' ? 'Partial Dispatch Note' : 
-                     orderModal.order.status === 'DISPATCHED' ? 'Dispatch Note' : 
-                     'Request Voucher'} - {orderModal.order.order_number}
-                  </Typography>
-                  {orderModal.order.status === 'PARTIAL_DISPATCH' && (
-                    <Typography variant="body2" sx={{ mt: 1, color: 'warning.dark', fontWeight: 500 }}>
-                      ⚠ PARTIAL DISPATCH - Some items pending
-                    </Typography>
-                  )}
-                </Box>
-                
-                {/* Order Info */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 2 }}>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Site</Typography>
-                    <Typography variant="body1" fontWeight={500}>{orderModal.order.site_name}</Typography>
-                    <Typography variant="body2" color="text.secondary">{orderModal.order.city}</Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Order Date</Typography>
-                    <Typography variant="body1">{new Date(orderModal.order.created_at).toLocaleDateString()}</Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Status</Typography>
-                    <Box sx={{ mt: 0.5 }}>
-                      <Chip label={orderModal.order.status} color={STATUS_COLORS[orderModal.order.status] || 'default'} size="small" />
-                    </Box>
-                  </Box>
-                  {orderModal.order.dispatched_at && (
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Dispatched</Typography>
-                      <Typography variant="body1">{new Date(orderModal.order.dispatched_at).toLocaleDateString()}</Typography>
-                    </Box>
-                  )}
-                </Box>
-
-                {/* Stock Summary Cards - only show for pending/partial orders */}
-                {orderModal.dispatchInfo && ['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && (
-                  <Stack direction="row" spacing={2} sx={{ mb: 2 }} className="no-print">
-                    <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'success.50' }}>
-                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                        <Typography variant="h5" color="success.main">{orderModal.dispatchInfo.summary.ready}</Typography>
-                        <Typography variant="caption">Ready</Typography>
-                      </CardContent>
-                    </Card>
-                    <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'warning.50' }}>
-                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                        <Typography variant="h5" color="warning.main">{orderModal.dispatchInfo.summary.partial}</Typography>
-                        <Typography variant="caption">Partial</Typography>
-                      </CardContent>
-                    </Card>
-                    <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'error.50' }}>
-                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                        <Typography variant="h5" color="error.main">{orderModal.dispatchInfo.summary.unavailable}</Typography>
-                        <Typography variant="caption">No Stock</Typography>
-                      </CardContent>
-                    </Card>
-                    <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'grey.100' }}>
-                      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                        <Typography variant="h5" color="text.secondary">{orderModal.dispatchInfo.summary.fulfilled}</Typography>
-                        <Typography variant="caption">Already Sent</Typography>
-                      </CardContent>
-                    </Card>
-                  </Stack>
-                )}
-
-                {/* Dispatch Status Banner */}
-                {orderModal.order.status === 'DISPATCHED' && (
-                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'success.50', borderRadius: 1, border: '1px solid', borderColor: 'success.main' }}>
-                    <Typography variant="body2" color="success.dark" sx={{ fontWeight: 600 }}>
-                      ✓ Fully Dispatched {orderModal.order.dispatched_at && `on ${new Date(orderModal.order.dispatched_at).toLocaleDateString()}`}
-                    </Typography>
-                  </Box>
-                )}
-                {orderModal.order.status === 'PARTIAL_DISPATCH' && (
-                  <>
-                    {/* Print version of partial dispatch banner */}
-                    <Box className="print-only" sx={{ 
-                      display: 'none',
-                      mb: 2, 
-                      p: 1.5, 
-                      border: '2px solid #ed6c02', 
-                      borderRadius: 1,
-                      '@media print': { display: 'block' }
-                    }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        ⚠ PARTIAL DISPATCH - This delivery contains only some items from the order. Remaining items will be dispatched when stock is available.
-                      </Typography>
-                    </Box>
-                    {/* Screen version */}
-                    <Box sx={{ mb: 2, p: 1.5, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.main' }} className="no-print">
-                      <Typography variant="body2" color="warning.dark" sx={{ fontWeight: 600 }}>
-                        ⚠ Partially Dispatched - Adjust quantities below and dispatch remaining items.
-                      </Typography>
-                    </Box>
-                  </>
-                )}
-
-                {/* Adjustment Mode Banner */}
-                {orderModal.adjusting && (
-                  <Box sx={{ mb: 2, p: 1.5, bgcolor: 'info.50', borderRadius: 1, border: '1px solid', borderColor: 'info.main' }} className="no-print">
-                    <Typography variant="body2" color="info.dark" sx={{ fontWeight: 600 }}>
-                      ✏️ Adjustment Mode - Modify the "Approved" quantities below. Values less than ordered will be saved.
-                    </Typography>
-                  </Box>
-                )}
-
-                {/* Items Table - Simplified */}
-                <Paper variant="outlined">
-                  <Box component="table" sx={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-                    <Box component="thead" sx={{ bgcolor: 'grey.100' }}>
-                      <Box component="tr">
-                        <Box component="th" sx={{ p: 1.5, textAlign: 'left', borderBottom: '2px solid #006633' }}>Item</Box>
-                        <Box component="th" sx={{ p: 1.5, textAlign: 'left', borderBottom: '2px solid #006633', width: 90 }}>SKU</Box>
-                        <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 70 }}>Ordered</Box>
-                        {/* Approved column - show when in adjustment mode or if any item has been adjusted */}
-                        {(orderModal.adjusting || orderModal.dispatchInfo?.items.some((i: any) => i.qty_approved !== null && i.qty_approved !== i.qty_requested)) && (
-                          <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 80, bgcolor: orderModal.adjusting ? 'info.100' : 'inherit' }} className="no-print">
-                            Approved
-                          </Box>
-                        )}
-                        <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 80 }}>Dispatched</Box>
-                        <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 70 }}>Pending</Box>
-                        {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && orderModal.dispatchInfo && !orderModal.adjusting && (
-                          <Box component="th" sx={{ p: 1.5, textAlign: 'center', borderBottom: '2px solid #006633', width: 90 }} className="no-print">To Send</Box>
-                        )}
-                        <Box component="th" sx={{ p: 1.5, textAlign: 'right', borderBottom: '2px solid #006633', width: 70 }}>Unit $</Box>
-                        <Box component="th" sx={{ p: 1.5, textAlign: 'right', borderBottom: '2px solid #006633', width: 80 }}>Total $</Box>
-                      </Box>
-                    </Box>
-                    <Box component="tbody">
-                      {orderModal.dispatchInfo ? orderModal.dispatchInfo.items.map((item: any) => {
-                        const dispatched = item.qty_dispatched || 0;
-                        const remaining = item.qty_requested - dispatched;
-                        const stockAvailable = item.stock_available || 0;
-                        const maxDispatch = Math.min(remaining, stockAvailable);
-                        const currentQty = orderModal.customQty[item.id] ?? 0;
-                        const orderItem = orderModal.order?.items?.find((oi) => oi.sku === item.sku);
-                        
-                        // Determine row status for styling
-                        const isComplete = remaining === 0;
-                        const canFulfill = stockAvailable >= remaining;
-                        const canPartial = stockAvailable > 0 && stockAvailable < remaining;
-                        const noStock = stockAvailable === 0 && remaining > 0;
-                        
-                        return (
-                          <Box component="tr" key={item.id} sx={{ 
-                            borderBottom: '1px solid', 
-                            borderColor: 'divider', 
-                            bgcolor: isComplete ? 'transparent' : canFulfill ? 'success.50' : canPartial ? 'warning.50' : 'error.50'
-                          }}>
-                            <Box component="td" sx={{ p: 1.5 }}>
-                              <Typography variant="body2" fontWeight={500} sx={{ fontSize: 13 }}>{item.item_name}</Typography>
-                              {item.size && <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Size: {item.size}</Typography>}
-                              {/* Stock hint - only visible on screen */}
-                              {remaining > 0 && !orderModal.adjusting && (
-                                <Typography variant="caption" className="no-print" sx={{ 
-                                  display: 'block', 
-                                  color: canFulfill ? 'success.main' : canPartial ? 'warning.main' : 'error.main',
-                                  fontSize: 10
-                                }}>
-                                  {canFulfill ? `✓ ${stockAvailable} in stock` : canPartial ? `⚠ Only ${stockAvailable} in stock` : '✗ No stock'}
-                                </Typography>
-                              )}
-                            </Box>
-                            <Box component="td" sx={{ p: 1.5, fontFamily: 'monospace', fontSize: 10, color: 'text.secondary' }}>{item.sku}</Box>
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'center', fontWeight: 600 }}>
-                              {item.qty_approved !== null && item.qty_approved !== item.qty_requested ? (
-                                <Typography variant="body2" sx={{ textDecoration: 'line-through', color: 'text.secondary', fontSize: 12 }}>{item.qty_requested}</Typography>
-                              ) : item.qty_requested}
-                            </Box>
-                            {/* Approved column */}
-                            {(orderModal.adjusting || orderModal.dispatchInfo?.items.some((i: any) => i.qty_approved !== null && i.qty_approved !== i.qty_requested)) && (
-                              <Box component="td" sx={{ p: 1, textAlign: 'center', bgcolor: orderModal.adjusting ? 'info.50' : 'transparent' }} className="no-print">
-                                {orderModal.adjusting ? (
-                                  <TextField
-                                    type="number"
-                                    size="small"
-                                    value={orderModal.adjustments[item.id] ?? item.qty_approved ?? item.qty_requested}
-                                    onChange={(e) => {
-                                      const val = Math.max(0, Math.min(item.qty_requested, parseInt(e.target.value) || 0));
-                                      setOrderModal({
-                                        ...orderModal,
-                                        adjustments: { ...orderModal.adjustments, [item.id]: val }
-                                      });
-                                    }}
-                                    inputProps={{ min: 0, max: item.qty_requested, style: { textAlign: 'center', width: 40, padding: '6px' } }}
-                                    sx={{ width: 70 }}
-                                  />
-                                ) : (
-                                  item.qty_approved !== null && item.qty_approved !== item.qty_requested ? (
-                                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'info.main', fontSize: 13 }}>{item.qty_approved}</Typography>
-                                  ) : (
-                                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>-</Typography>
-                                  )
-                                )}
-                              </Box>
-                            )}
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
-                              {dispatched > 0 ? (
-                                <Typography variant="body2" sx={{ fontWeight: 600, color: isComplete ? 'success.main' : 'primary.main', fontSize: 13 }}>
-                                  {isComplete ? `✓ ${dispatched}` : dispatched}
-                                </Typography>
-                              ) : (
-                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>0</Typography>
-                              )}
-                            </Box>
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
-                              {remaining > 0 ? (
-                                <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.dark', fontSize: 13 }}>{remaining}</Typography>
-                              ) : (
-                                <Typography variant="body2" color="success.main" sx={{ fontSize: 13 }}>✓</Typography>
-                              )}
-                            </Box>
-                            {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order?.status || '') && orderModal.dispatchInfo && !orderModal.adjusting && (
-                              <Box component="td" sx={{ p: 1, textAlign: 'center' }} className="no-print">
-                                {isComplete ? (
-                                  <Chip label="Complete" size="small" color="success" sx={{ fontSize: 10 }} />
-                                ) : noStock ? (
-                                  <Chip label="No Stock" size="small" color="error" sx={{ fontSize: 10 }} />
-                                ) : (
-                                  <TextField
-                                    type="number"
-                                    size="small"
-                                    value={currentQty}
-                                    onChange={(e) => {
-                                      const val = Math.max(0, Math.min(maxDispatch, parseInt(e.target.value) || 0));
-                                      setOrderModal({
-                                        ...orderModal,
-                                        customQty: { ...orderModal.customQty, [item.id]: val }
-                                      });
-                                    }}
-                                    inputProps={{ min: 0, max: maxDispatch, style: { textAlign: 'center', width: 40, padding: '6px' } }}
-                                    sx={{ width: 70 }}
-                                  />
-                                )}
-                              </Box>
-                            )}
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontSize: 13 }}>${parseFloat(orderItem?.unit_cost || '0').toFixed(2)}</Box>
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontWeight: 600, fontSize: 13 }}>${parseFloat(orderItem?.total_cost || '0').toFixed(2)}</Box>
-                          </Box>
-                        );
-                      }) : orderModal.order.items?.map((item, idx) => {
-                        const dispatched = item.qty_dispatched || 0;
-                        const remaining = item.quantity - dispatched;
-                        const isComplete = remaining === 0;
-                        return (
-                          <Box component="tr" key={idx} sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: isComplete ? 'transparent' : 'warning.50' }}>
-                            <Box component="td" sx={{ p: 1.5 }}>
-                              <Typography variant="body2" fontWeight={500} sx={{ fontSize: 13 }}>{item.product}</Typography>
-                              {item.employee_name && <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>For: {item.employee_name}</Typography>}
-                            </Box>
-                            <Box component="td" sx={{ p: 1.5, fontFamily: 'monospace', fontSize: 10, color: 'text.secondary' }}>{item.sku}</Box>
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'center', fontWeight: 600 }}>{item.quantity}</Box>
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
-                              {dispatched > 0 ? (
-                                <Typography variant="body2" sx={{ fontWeight: 600, color: isComplete ? 'success.main' : 'primary.main', fontSize: 13 }}>
-                                  {isComplete ? `✓ ${dispatched}` : dispatched}
-                                </Typography>
-                              ) : (
-                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>0</Typography>
-                              )}
-                            </Box>
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'center' }}>
-                              {remaining > 0 ? (
-                                <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.dark', fontSize: 13 }}>{remaining}</Typography>
-                              ) : (
-                                <Typography variant="body2" color="success.main" sx={{ fontSize: 13 }}>✓</Typography>
-                              )}
-                            </Box>
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontSize: 13 }}>${parseFloat(item.unit_cost).toFixed(2)}</Box>
-                            <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontWeight: 600, fontSize: 13 }}>${parseFloat(item.total_cost).toFixed(2)}</Box>
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                    <Box component="tfoot" sx={{ bgcolor: 'grey.100' }}>
-                      <Box component="tr">
-                        <Box component="td" colSpan={['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && orderModal.dispatchInfo ? 7 : 6} sx={{ p: 1.5, textAlign: 'right', fontWeight: 600, borderTop: '2px solid #006633' }}>Total Amount:</Box>
-                        <Box component="td" sx={{ p: 1.5, textAlign: 'right', fontWeight: 700, fontSize: 16, borderTop: '2px solid #006633' }}>${parseFloat(orderModal.order.total_amount).toFixed(2)}</Box>
-                      </Box>
-                    </Box>
-                  </Box>
-                </Paper>
-
-                {/* Print-only Summary for Partial Dispatch */}
-                {orderModal.order.status === 'PARTIAL_DISPATCH' && orderModal.dispatchInfo && (
-                  <Box className="print-only" sx={{ 
-                    display: 'none',
-                    mt: 3, 
-                    p: 2, 
-                    border: '1px solid #ccc',
-                    borderRadius: 1,
-                    '@media print': { display: 'block' }
-                  }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1, borderBottom: '1px solid #006633', pb: 1 }}>
-                      Dispatch Summary
-                    </Typography>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.dark' }}>✓ Items Dispatched (This Delivery):</Typography>
-                        {orderModal.dispatchInfo.items.filter((i: any) => i.qty_dispatched > 0).map((item: any) => (
-                          <Typography key={item.id} variant="body2" sx={{ ml: 2, fontSize: 12 }}>
-                            • {item.item_name} ({item.sku}): {item.qty_dispatched} of {item.qty_requested}
-                          </Typography>
-                        ))}
-                        {orderModal.dispatchInfo.items.filter((i: any) => i.qty_dispatched > 0).length === 0 && (
-                          <Typography variant="body2" sx={{ ml: 2, fontSize: 12, color: 'text.secondary' }}>None</Typography>
-                        )}
-                      </Box>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.dark' }}>⚠ Items Pending (To Follow):</Typography>
-                        {orderModal.dispatchInfo.items.filter((i: any) => (i.qty_requested - (i.qty_dispatched || 0)) > 0).map((item: any) => {
-                          const pending = item.qty_requested - (item.qty_dispatched || 0);
-                          return (
-                            <Typography key={item.id} variant="body2" sx={{ ml: 2, fontSize: 12 }}>
-                              • {item.item_name} ({item.sku}): {pending} pending
-                            </Typography>
-                          );
-                        })}
-                      </Box>
-                    </Box>
-                    <Typography variant="caption" sx={{ display: 'block', mt: 2, fontStyle: 'italic' }}>
-                      Pending items will be dispatched when stock becomes available.
-                    </Typography>
-                  </Box>
-                )}
-
-                {/* Print-only Signature Section */}
-                <Box className="print-only" sx={{ 
-                  display: 'none',
-                  mt: 4, 
-                  pt: 3,
-                  borderTop: '1px dashed #ccc',
-                  '@media print': { display: 'block', pageBreakInside: 'avoid' }
-                }}>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 3 }}>Issued By (Warehouse):</Typography>
-                      <Box sx={{ borderBottom: '1px solid #333', width: '80%', mb: 1 }}>&nbsp;</Box>
-                      <Typography variant="caption">Name & Signature</Typography>
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="caption">Date: _______________</Typography>
-                      </Box>
-                    </Box>
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 3 }}>Received By (Site):</Typography>
-                      <Box sx={{ borderBottom: '1px solid #333', width: '80%', mb: 1 }}>&nbsp;</Box>
-                      <Typography variant="caption">Name & Signature</Typography>
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="caption">Date: _______________</Typography>
-                      </Box>
-                    </Box>
-                  </Box>
-                  <Typography variant="caption" sx={{ display: 'block', mt: 3, textAlign: 'center', color: 'text.secondary' }}>
-                    Please verify all items received and sign above. Report any discrepancies immediately.
-                  </Typography>
-                </Box>
-
-                {/* Dispatch Summary - Shows confirmation details */}
-                {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && orderModal.dispatchInfo && Object.values(orderModal.customQty).some(qty => qty > 0) && (() => {
-                  const totalItems = Object.values(orderModal.customQty).reduce((sum, qty) => sum + qty, 0);
-                  const lineCount = Object.values(orderModal.customQty).filter(qty => qty > 0).length;
-                  // Calculate dispatch value
-                  let dispatchValue = 0;
-                  Object.entries(orderModal.customQty).forEach(([itemId, qty]) => {
-                    if (qty > 0) {
-                      const item = orderModal.dispatchInfo?.items.find((i: any) => i.id === parseInt(itemId));
-                      const orderItem = orderModal.order?.items?.find((oi) => oi.sku === item?.sku);
-                      if (orderItem) {
-                        dispatchValue += qty * parseFloat(orderItem.unit_cost);
-                      }
-                    }
-                  });
-                  const totalOrdered = orderModal.dispatchInfo?.items.reduce((sum: number, item: any) => sum + item.qty_requested, 0) || 0;
-                  const totalDispatched = orderModal.dispatchInfo?.items.reduce((sum: number, item: any) => sum + (item.qty_dispatched || 0), 0) || 0;
-                  const willBeDispatched = totalDispatched + totalItems;
-                  const isPartial = willBeDispatched < totalOrdered;
-                  
-                  return (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: isPartial ? 'warning.50' : 'success.50', borderRadius: 1, border: '1px solid', borderColor: isPartial ? 'warning.main' : 'success.main' }} className="no-print">
-                      <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>
-                        {isPartial ? '⚠ Partial Dispatch' : '✓ Full Dispatch'}
-                      </Typography>
-                      <Typography variant="body2">
-                        Dispatching <strong>{totalItems} items</strong> from {lineCount} line(s) to <strong>{orderModal.order.site_name}</strong>
-                      </Typography>
-                      <Typography variant="body2" sx={{ mt: 0.5 }}>
-                        Value: <strong>${dispatchValue.toFixed(2)}</strong>
-                        {isPartial && ` • ${totalOrdered - willBeDispatched} items will remain pending`}
-                      </Typography>
-                    </Box>
-                  );
-                })()}
-              </DialogContent>
-              <DialogActions sx={{ px: 3, py: 2 }} className="no-print">
-                {/* Decline button - only for pending orders */}
-                {orderModal.order.status === 'PENDING' && !orderModal.adjusting && (
-                  <Button color="error" onClick={() => {
-                    const reason = prompt('Reason for declining this order:');
-                    if (reason) handleDecline(reason);
-                  }}>
-                    Decline
-                  </Button>
-                )}
-                
-                {/* Adjust Order button - only for pending orders, not yet dispatched */}
-                {orderModal.order.status === 'PENDING' && !orderModal.adjusting && (
-                  <Button 
-                    variant="outlined"
-                    color="info"
-                    startIcon={<EditIcon />}
-                    onClick={() => {
-                      // Initialize adjustments with current values
-                      const initialAdjustments: Record<number, number> = {};
-                      orderModal.dispatchInfo?.items.forEach((item: any) => {
-                        initialAdjustments[item.id] = item.qty_approved ?? item.qty_requested;
-                      });
-                      setOrderModal({ ...orderModal, adjusting: true, adjustments: initialAdjustments });
-                    }}
-                  >
-                    Adjust Order
-                  </Button>
-                )}
-                
-                {/* Cancel Adjustment button */}
-                {orderModal.adjusting && (
-                  <Button onClick={() => setOrderModal({ ...orderModal, adjusting: false, adjustments: {} })}>
-                    Cancel
-                  </Button>
-                )}
-                
-                {/* Save Adjustments button */}
-                {orderModal.adjusting && (
-                  <Button 
-                    variant="contained" 
-                    color="info"
-                    onClick={handleSaveAdjustments}
-                    disabled={orderModal.savingAdjustments}
-                    startIcon={orderModal.savingAdjustments ? <CircularProgress size={16} color="inherit" /> : null}
-                  >
-                    {orderModal.savingAdjustments ? 'Saving...' : 'Save Adjustments'}
-                  </Button>
-                )}
-                
-                {/* Dispatch button - only when not adjusting */}
-                {['PENDING', 'PARTIAL_DISPATCH'].includes(orderModal.order.status) && !orderModal.adjusting && Object.values(orderModal.customQty).some(qty => qty > 0) && (
-                  <Button 
-                    variant="contained" 
-                    color="success" 
-                    startIcon={orderModal.dispatching ? <CircularProgress size={16} color="inherit" /> : <DispatchIcon />}
-                    onClick={handleOrderModalDispatch}
-                    disabled={orderModal.dispatching}
-                  >
-                    {orderModal.dispatching ? 'Dispatching...' : `Dispatch ${Object.values(orderModal.customQty).reduce((sum, qty) => sum + qty, 0)} Items`}
-                  </Button>
-                )}
-                {orderModal.order.status === 'DISPATCHED' && (
-                  <Chip label="Fully Dispatched" color="success" size="small" sx={{ mr: 1 }} />
-                )}
-                {!orderModal.adjusting && <Button startIcon={<PrintIcon />} onClick={() => window.print()}>Print</Button>}
-              </DialogActions>
-            </>
-          ) : null}
-        </Dialog>
-
-        {/* Dispatch Modal */}
-        <Dialog open={dispatchModal.open} onClose={() => setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false, customQty: {} })} maxWidth="md" fullWidth>
-          {dispatchModal.loading ? (
-            <Box sx={{ p: 8, textAlign: 'center' }}>
-              <CircularProgress />
-              <Typography sx={{ mt: 2 }}>Checking stock availability...</Typography>
-            </Box>
-          ) : dispatchModal.dispatchInfo ? (
-            <>
-              <DialogTitle>Dispatch Order</DialogTitle>
-              <DialogContent dividers>
-                {/* Summary Cards */}
-                <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-                  <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'success.50' }}>
-                    <CardContent>
-                      <Typography variant="h4" color="success.main">{dispatchModal.dispatchInfo.summary.ready}</Typography>
-                      <Typography variant="caption">Ready</Typography>
-                    </CardContent>
-                  </Card>
-                  <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'warning.50' }}>
-                    <CardContent>
-                      <Typography variant="h4" color="warning.main">{dispatchModal.dispatchInfo.summary.partial}</Typography>
-                      <Typography variant="caption">Partial</Typography>
-                    </CardContent>
-                  </Card>
-                  <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'error.50' }}>
-                    <CardContent>
-                      <Typography variant="h4" color="error.main">{dispatchModal.dispatchInfo.summary.unavailable}</Typography>
-                      <Typography variant="caption">Unavailable</Typography>
-                    </CardContent>
-                  </Card>
-                  <Card sx={{ flex: 1, textAlign: 'center', bgcolor: 'grey.100' }}>
-                    <CardContent>
-                      <Typography variant="h4" color="text.secondary">{dispatchModal.dispatchInfo.summary.fulfilled}</Typography>
-                      <Typography variant="caption">Already Sent</Typography>
-                    </CardContent>
-                  </Card>
-                </Stack>
-
-                {/* Items List */}
-                <Paper variant="outlined">
-                  <Box component="table" sx={{ width: '100%', fontSize: 14 }}>
-                    <Box component="thead" sx={{ bgcolor: 'grey.50' }}>
-                      <Box component="tr">
-                        <Box component="th" sx={{ p: 2, textAlign: 'left' }}>Item</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Need</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Stock</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'center', width: 100 }}>Dispatch</Box>
-                        <Box component="th" sx={{ p: 2, textAlign: 'center' }}>Status</Box>
-                      </Box>
-                    </Box>
-                    <Box component="tbody">
-                      {dispatchModal.dispatchInfo.items.map((item: any) => {
-                        const remaining = item.qty_requested - item.qty_dispatched;
-                        const maxDispatch = Math.min(remaining, item.stock_available);
-                        const currentQty = dispatchModal.customQty[item.id] ?? 0;
-                        
-                        return (
-                          <Box component="tr" key={item.id} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                            <Box component="td" sx={{ p: 2 }}>
-                              <Typography variant="body2" fontWeight={500}>{item.item_name}</Typography>
-                              <Typography variant="caption" color="text.secondary">{item.sku}</Typography>
-                              {item.size && <Typography variant="caption" color="text.secondary"> (Size: {item.size})</Typography>}
-                            </Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
-                              <Typography variant="body2">{remaining}</Typography>
-                            </Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
-                              <Typography 
-                                variant="body2" 
-                                color={item.stock_available >= remaining ? 'success.main' : item.stock_available > 0 ? 'warning.main' : 'error.main'}
-                                fontWeight={500}
-                              >
-                                {item.stock_available}
-                              </Typography>
-                            </Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
-                              {item.dispatch_status === 'FULFILLED' ? (
-                                <Typography variant="body2" color="text.secondary">✓ Sent</Typography>
-                              ) : item.stock_available > 0 ? (
-                                <TextField
-                                  type="number"
-                                  size="small"
-                                  value={currentQty}
-                                  onChange={(e) => {
-                                    const val = Math.max(0, Math.min(maxDispatch, parseInt(e.target.value) || 0));
-                                    setDispatchModal({
-                                      ...dispatchModal,
-                                      customQty: { ...dispatchModal.customQty, [item.id]: val }
-                                    });
-                                  }}
-                                  inputProps={{ min: 0, max: maxDispatch, style: { textAlign: 'center', width: 50 } }}
-                                  sx={{ width: 80 }}
-                                />
-                              ) : (
-                                <Typography variant="body2" color="error.main">No stock</Typography>
-                              )}
-                            </Box>
-                            <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
-                              <Chip
-                                size="small"
-                                label={
-                                  item.dispatch_status === 'FULFILLED' ? 'Sent' : 
-                                  currentQty >= remaining ? 'Full' : 
-                                  currentQty > 0 ? 'Partial' : 
-                                  item.stock_available > 0 ? 'Skip' : 'No Stock'
-                                }
-                                color={
-                                  item.dispatch_status === 'FULFILLED' ? 'default' :
-                                  currentQty >= remaining ? 'success' : 
-                                  currentQty > 0 ? 'warning' : 
-                                  'error'
-                                }
-                              />
-                            </Box>
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  </Box>
-                </Paper>
-                
-                {/* Dispatch Summary */}
-                <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                  <Typography variant="body2">
-                    <strong>Will dispatch:</strong> {Object.values(dispatchModal.customQty).reduce((sum, qty) => sum + qty, 0)} items 
-                    from {Object.values(dispatchModal.customQty).filter(qty => qty > 0).length} line(s)
-                  </Typography>
-                </Box>
-              </DialogContent>
-              <DialogActions sx={{ px: 3, py: 2 }}>
-                <Button onClick={() => setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false, customQty: {} })}>Cancel</Button>
-                {Object.values(dispatchModal.customQty).some(qty => qty > 0) ? (
-                  <Button 
-                    variant="contained" 
-                    color="success" 
-                    onClick={() => handleDispatch(true)} 
-                    disabled={dispatchModal.confirming}
-                    startIcon={dispatchModal.confirming ? <CircularProgress size={16} /> : null}
-                  >
-                    {dispatchModal.confirming ? 'Processing...' : `Dispatch ${Object.values(dispatchModal.customQty).reduce((sum, qty) => sum + qty, 0)} Items`}
-                  </Button>
-                ) : (
-                  <Typography color="text.secondary" variant="body2">Adjust quantities to dispatch</Typography>
-                )}
-              </DialogActions>
-            </>
-          ) : null}
-        </Dialog>
-
-        {/* Site Edit Modal */}
-        <Dialog open={siteModal.open} onClose={() => setSiteModal({ open: false, site: null, isNew: false })} maxWidth="sm" fullWidth>
-          <DialogTitle>{siteModal.isNew ? 'Add New Site' : 'Edit Site'}</DialogTitle>
-          <DialogContent>
-            {siteModal.site && (
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                {/* Site Code - shown only when editing, auto-generated for new sites */}
-                {!siteModal.isNew && (
-                  <TextField
-                    fullWidth
-                    label="Site Code"
-                    value={siteModal.site.site_code}
-                    disabled
-                    helperText="Auto-generated from site name"
-                  />
-                )}
-                <TextField
-                  fullWidth
-                  label="Site Name"
-                  value={siteModal.site.name}
-                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, name: e.target.value } })}
-                  placeholder="e.g. Harare Main Branch"
-                  required
-                  helperText={siteModal.isNew ? "Site code will be auto-generated from name" : ""}
-                />
-                <TextField
-                  fullWidth
-                  label="City"
-                  value={siteModal.site.city}
-                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, city: e.target.value } })}
-                  placeholder="e.g. Harare"
-                />
-                <TextField
-                  fullWidth
-                  label="Address"
-                  value={siteModal.site.address}
-                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, address: e.target.value } })}
-                  placeholder="Full street address"
-                  multiline
-                  rows={2}
-                />
-                <Stack direction="row" spacing={2}>
-                  <TextField
-                    fullWidth
-                    label="Contact Name"
-                    value={siteModal.site.contact_name}
-                    onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, contact_name: e.target.value } })}
-                    placeholder="Contact person"
-                  />
-                  <TextField
-                    fullWidth
-                    label="Phone"
-                    value={siteModal.site.phone}
-                    onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, phone: e.target.value } })}
-                    placeholder="Phone number"
-                  />
-                </Stack>
-                <TextField
-                  fullWidth
-                  label="Email"
-                  value={siteModal.site.email}
-                  onChange={(e) => setSiteModal({ ...siteModal, site: { ...siteModal.site!, email: e.target.value } })}
-                  placeholder="email@example.com"
-                  type="email"
-                />
-              </Stack>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setSiteModal({ open: false, site: null, isNew: false })}>Cancel</Button>
-            <Button variant="contained" onClick={saveSite}>
-              {siteModal.isNew ? 'Create Site' : 'Save Changes'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Site Ledger Modal - Shows dispatch details for a site */}
-        <Dialog 
-          open={siteLedgerModal.open} 
-          onClose={() => setSiteLedgerModal({ open: false, site: null, items: [], loading: false })} 
-          maxWidth="lg" 
-          fullWidth
-        >
-          <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box>
-              <Typography variant="h6">
-                📋 Site Dispatch Ledger: {siteLedgerModal.site?.site_name}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {siteLedgerModal.site?.site_code} • {siteLedgerModal.site?.city}
-                {(dateFrom || dateTo) && ` • Filtered: ${dateFrom || '...'} to ${dateTo || '...'}`}
-              </Typography>
-            </Box>
-            <Button 
-              variant="outlined" 
-              startIcon={<DownloadIcon />} 
-              onClick={downloadSiteLedgerCSV}
-              disabled={siteLedgerModal.items.length === 0}
-            >
-              Download CSV
-            </Button>
-          </DialogTitle>
-          <DialogContent>
-            {siteLedgerModal.loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : siteLedgerModal.items.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography color="text.secondary">No dispatch records found for this site</Typography>
-              </Box>
+      {/* ── ADD PRODUCT DIALOG ── */}
+      <Dialog open={addProductModal.open} onClose={()=>setAddProductModal(prev=>({...prev,open:false}))} maxWidth="sm" fullWidth>
+        <DialogTitle style={{fontFamily:'inherit',fontSize:15,fontWeight:600,borderBottom:'0.5px solid rgba(0,0,0,0.08)',paddingBottom:14,display:'flex',alignItems:'center',gap:12}}>
+          Add Product
+          <div style={{display:'inline-flex',background:'rgba(0,0,0,0.04)',borderRadius:20,padding:3,gap:2}}>
+            {(['new','add-size'] as const).map(m=>(
+              <button key={m} onClick={()=>setAddProductModal(prev=>({...prev,mode:m,product:'',category:'',sku:'',size:''}))} style={{padding:'4px 12px',borderRadius:16,border:'none',cursor:'pointer',fontSize:12,fontFamily:'inherit',background:addProductModal.mode===m?'#fff':'transparent',color:addProductModal.mode===m?'#0a0a0a':'rgba(0,0,0,0.5)',boxShadow:addProductModal.mode===m?'0 1px 3px rgba(0,0,0,0.08)':'none',fontWeight:addProductModal.mode===m?500:400}}>
+                {m==='new'?'New Product':'Add Size to Existing'}
+              </button>
+            ))}
+          </div>
+        </DialogTitle>
+        <DialogContent style={{paddingTop:20,fontFamily:'inherit'}}>
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            {addProductModal.mode==='new' ? (
+              <TextField label="Product Name" size="small" fullWidth value={addProductModal.product} onChange={e=>setAddProductModal(prev=>({...prev,product:e.target.value}))} />
             ) : (
-              <>
-                {/* Summary Cards */}
-                <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-                  <Paper sx={{ p: 2, flex: 1, bgcolor: 'primary.50' }}>
-                    <Typography variant="caption" color="text.secondary">Total Items</Typography>
-                    <Typography variant="h5" fontWeight={700}>
-                      {siteLedgerModal.items.reduce((sum, item) => sum + (item.qty_dispatched || 0), 0)}
-                    </Typography>
-                  </Paper>
-                  <Paper sx={{ p: 2, flex: 1, bgcolor: 'success.50' }}>
-                    <Typography variant="caption" color="text.secondary">Total Value</Typography>
-                    <Typography variant="h5" fontWeight={700} color="success.main">
-                      ${siteLedgerModal.items.reduce((sum, item) => sum + parseFloat(item.dispatch_value || 0), 0).toFixed(2)}
-                    </Typography>
-                  </Paper>
-                  <Paper sx={{ p: 2, flex: 1, bgcolor: 'grey.100' }}>
-                    <Typography variant="caption" color="text.secondary">Total Records</Typography>
-                    <Typography variant="h5" fontWeight={700}>
-                      {siteLedgerModal.items.length}
-                    </Typography>
-                  </Paper>
-                </Stack>
-
-                {/* Ledger Table */}
-                <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
-                  <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <Box component="thead" sx={{ bgcolor: 'grey.100', position: 'sticky', top: 0 }}>
-                      <Box component="tr">
-                        <Box component="th" sx={{ p: 1, textAlign: 'left', borderBottom: '2px solid', borderColor: 'divider' }}>Voucher</Box>
-                        <Box component="th" sx={{ p: 1, textAlign: 'left', borderBottom: '2px solid', borderColor: 'divider' }}>Dispatch Date</Box>
-                        <Box component="th" sx={{ p: 1, textAlign: 'left', borderBottom: '2px solid', borderColor: 'divider' }}>SKU</Box>
-                        <Box component="th" sx={{ p: 1, textAlign: 'left', borderBottom: '2px solid', borderColor: 'divider' }}>Item</Box>
-                        <Box component="th" sx={{ p: 1, textAlign: 'center', borderBottom: '2px solid', borderColor: 'divider' }}>Qty</Box>
-                        <Box component="th" sx={{ p: 1, textAlign: 'right', borderBottom: '2px solid', borderColor: 'divider' }}>Unit $</Box>
-                        <Box component="th" sx={{ p: 1, textAlign: 'right', borderBottom: '2px solid', borderColor: 'divider' }}>Total $</Box>
-                      </Box>
-                    </Box>
-                    <Box component="tbody">
-                      {siteLedgerModal.items.map((item, idx) => (
-                        <Box component="tr" key={idx} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                          <Box component="td" sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                            <Typography variant="body2" fontFamily="monospace" fontSize={11}>{item.voucher_number}</Typography>
-                          </Box>
-                          <Box component="td" sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                            {item.dispatched_at ? new Date(item.dispatched_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                          </Box>
-                          <Box component="td" sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                            <Typography variant="body2" fontFamily="monospace" fontSize={11}>{item.sku}</Typography>
-                          </Box>
-                          <Box component="td" sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                            {item.item_name}
-                            {item.size && <Typography variant="caption" color="text.secondary"> ({item.size})</Typography>}
-                          </Box>
-                          <Box component="td" sx={{ p: 1, textAlign: 'center', borderBottom: '1px solid', borderColor: 'divider', fontWeight: 600 }}>
-                            {item.qty_dispatched}
-                          </Box>
-                          <Box component="td" sx={{ p: 1, textAlign: 'right', borderBottom: '1px solid', borderColor: 'divider' }}>
-                            ${parseFloat(item.unit_cost).toFixed(2)}
-                          </Box>
-                          <Box component="td" sx={{ p: 1, textAlign: 'right', borderBottom: '1px solid', borderColor: 'divider', fontWeight: 600, color: 'success.main' }}>
-                            ${parseFloat(item.dispatch_value).toFixed(2)}
-                          </Box>
-                        </Box>
-                      ))}
-                    </Box>
-                  </Box>
-                </Box>
-              </>
+              <TextField select label="Select Existing Product" size="small" fullWidth value={addProductModal.product} onChange={e=>{const pName=e.target.value;const ex=stock.find(s=>s.product===pName);setAddProductModal(prev=>({...prev,product:pName,category:ex?.category||prev.category,sku:generateSku(pName,prev.size)}));}} SelectProps={{native:true}}>
+                <option value="">-- Select product --</option>
+                {uniqueProducts.map(p=><option key={p} value={p}>{p}</option>)}
+              </TextField>
             )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setSiteLedgerModal({ open: false, site: null, items: [], loading: false })}>Close</Button>
-          </DialogActions>
-        </Dialog>
+            {addProductModal.mode==='add-size' ? (
+              <TextField label="Category" size="small" fullWidth value={addProductModal.category} disabled />
+            ) : (
+              <TextField select label="Category" size="small" fullWidth value={addProductModal.category} onChange={e=>setAddProductModal(prev=>({...prev,category:e.target.value}))} SelectProps={{native:true}}>
+                <option value="">-- Select category --</option>
+                <option value="Uniforms">Uniforms</option>
+                <option value="Consumables">Consumables</option>
+                <option value="Equipment">Equipment</option>
+                <option value="Stationery">Stationery</option>
+                <option value="Safety">Safety</option>
+                <option value="Other">Other</option>
+              </TextField>
+            )}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+              <TextField label="Size (optional)" size="small" value={addProductModal.size} onChange={e=>{const sz=e.target.value;setAddProductModal(prev=>({...prev,size:sz,sku:prev.mode==='add-size'&&prev.product?generateSku(prev.product,sz):prev.sku}));}} />
+              <TextField label="Role" size="small" value={addProductModal.role} onChange={e=>setAddProductModal(prev=>({...prev,role:e.target.value}))} />
+              <TextField label="SKU (auto-generated if blank)" size="small" value={addProductModal.sku} onChange={e=>setAddProductModal(prev=>({...prev,sku:e.target.value}))} />
+              <TextField label="Unit" size="small" value={addProductModal.unit} onChange={e=>setAddProductModal(prev=>({...prev,unit:e.target.value}))} />
+              <TextField label="Unit Cost ($)" size="small" type="number" value={addProductModal.cost} onChange={e=>setAddProductModal(prev=>({...prev,cost:e.target.value}))} />
+              <TextField label="Initial Quantity" size="small" type="number" value={addProductModal.initialQuantity} onChange={e=>setAddProductModal(prev=>({...prev,initialQuantity:e.target.value}))} />
+            </div>
+          </div>
+        </DialogContent>
+        <DialogActions style={{padding:'12px 24px',borderTop:'0.5px solid rgba(0,0,0,0.08)'}}>
+          <button onClick={()=>setAddProductModal(prev=>({...prev,open:false}))} style={btnSecondary}>Cancel</button>
+          <button onClick={handleAddProduct} disabled={addProductModal.submitting} style={btnPrimary}>{addProductModal.submitting?'Adding…':'Add Product'}</button>
+        </DialogActions>
+      </Dialog>
 
-        {/* Snackbar */}
-        <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
-          <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })} sx={{ width: '100%' }}>
-            {snackbar.message}
-          </Alert>
-        </Snackbar>
-      </Box>
-    </ThemeProvider>
+      {/* ── BULK RECEIVE DIALOG ── */}
+      <Dialog open={bulkReceiveModal.open} onClose={()=>setBulkReceiveModal(prev=>({...prev,open:false}))} maxWidth="sm" fullWidth>
+        <DialogTitle style={{fontFamily:'inherit',fontSize:15,fontWeight:600}}>Bulk Stock Receive</DialogTitle>
+        <DialogContent style={{fontFamily:'inherit'}}>
+          <TextField label="GRN Number (optional)" size="small" fullWidth value={bulkReceiveModal.grnNumber} onChange={e=>setBulkReceiveModal(prev=>({...prev,grnNumber:e.target.value}))} style={{marginBottom:14,marginTop:8}} />
+          <div style={{maxHeight:400,overflowY:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse'}}>
+              <thead><tr>
+                <th style={thStyle}>SKU</th>
+                <th style={thStyle}>Product</th>
+                <th style={{...thStyle,textAlign:'center'}}>Qty</th>
+              </tr></thead>
+              <tbody>
+                {bulkReceiveModal.items.map((item,i)=>(
+                  <tr key={item.item_id}>
+                    <td style={{...tdStyle,fontSize:11,fontFamily:'monospace'}}>{item.sku}</td>
+                    <td style={{...tdStyle,fontSize:12}}>{item.product}</td>
+                    <td style={{...tdStyle,textAlign:'center'}}>
+                      <input type="number" min={0} value={item.quantity} onChange={e=>{const updated=[...bulkReceiveModal.items];updated[i]={...updated[i],quantity:e.target.value};setBulkReceiveModal(prev=>({...prev,items:updated}));}} style={{width:64,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,padding:'4px 8px',fontSize:13,textAlign:'center',fontFamily:'inherit'}} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DialogContent>
+        <DialogActions style={{padding:'12px 24px',borderTop:'0.5px solid rgba(0,0,0,0.08)'}}>
+          <button onClick={()=>setBulkReceiveModal(prev=>({...prev,open:false}))} style={btnSecondary}>Cancel</button>
+          <button onClick={handleBulkReceive} disabled={bulkReceiveModal.submitting} style={btnPrimary}>{bulkReceiveModal.submitting?'Receiving…':'Receive Stock'}</button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── SITE EDIT DIALOG ── */}
+      <Dialog open={siteModal.open} onClose={()=>setSiteModal(prev=>({...prev,open:false}))} maxWidth="sm" fullWidth>
+        <DialogTitle style={{fontFamily:'inherit',fontSize:15,fontWeight:600}}>{siteModal.isNew?'Add Site':'Edit Site'}</DialogTitle>
+        <DialogContent style={{fontFamily:'inherit',paddingTop:16}}>
+          {siteModal.site&&(
+            <div style={{display:'flex',flexDirection:'column',gap:14,paddingTop:8}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <TextField label="Site Name" size="small" value={siteModal.site.name} onChange={e=>setSiteModal(prev=>({...prev,site:{...prev.site!,name:e.target.value}}))} />
+                <TextField label="City" size="small" value={siteModal.site.city} onChange={e=>setSiteModal(prev=>({...prev,site:{...prev.site!,city:e.target.value}}))} />
+                <TextField label="Contact Name" size="small" value={siteModal.site.contact_name} onChange={e=>setSiteModal(prev=>({...prev,site:{...prev.site!,contact_name:e.target.value}}))} />
+                <TextField label="Phone" size="small" value={siteModal.site.phone} onChange={e=>setSiteModal(prev=>({...prev,site:{...prev.site!,phone:e.target.value}}))} />
+                <TextField label="Email" size="small" value={siteModal.site.email} onChange={e=>setSiteModal(prev=>({...prev,site:{...prev.site!,email:e.target.value}}))} />
+                <TextField select label="Fulfillment Zone" size="small" value={siteModal.site.fulfillment_zone} onChange={e=>setSiteModal(prev=>({...prev,site:{...prev.site!,fulfillment_zone:e.target.value}}))} SelectProps={{native:true}}>
+                  <option value="DISPATCH">Dispatch</option>
+                  <option value="COLLECT">Collect</option>
+                </TextField>
+              </div>
+              <TextField label="Address" size="small" fullWidth multiline rows={2} value={siteModal.site.address} onChange={e=>setSiteModal(prev=>({...prev,site:{...prev.site!,address:e.target.value}}))} />
+            </div>
+          )}
+        </DialogContent>
+        <DialogActions style={{padding:'12px 24px',borderTop:'0.5px solid rgba(0,0,0,0.08)'}}>
+          <button onClick={()=>setSiteModal(prev=>({...prev,open:false}))} style={btnSecondary}>Cancel</button>
+          <button onClick={saveSite} style={btnPrimary}>Save</button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── SITE LEDGER DIALOG ── */}
+      <Dialog open={siteLedgerModal.open} onClose={()=>setSiteLedgerModal(prev=>({...prev,open:false}))} maxWidth="md" fullWidth>
+        <DialogTitle style={{fontFamily:'inherit',fontSize:15,fontWeight:600,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          {siteLedgerModal.site?.site_name} — Dispatch Ledger
+          <button onClick={downloadSiteLedgerCSV} style={{...btnSecondary,padding:'5px 12px',fontSize:12}}>↓ CSV</button>
+        </DialogTitle>
+        <DialogContent style={{fontFamily:'inherit'}}>
+          {siteLedgerModal.loading?<div style={{display:'flex',justifyContent:'center',padding:40}}><CircularProgress /></div>:(
+            <table style={{width:'100%',borderCollapse:'collapse'}}>
+              <thead><tr>{['Voucher','Dispatch Date','SKU','Item','Size','Qty Req','Qty Disp','Unit Cost','Value'].map(h=><th key={h} style={{...thStyle,textAlign:h==='Qty Req'||h==='Qty Disp'||h==='Unit Cost'||h==='Value'?'right':'left'}}>{h}</th>)}</tr></thead>
+              <tbody>
+                {siteLedgerModal.items.map((item:any,i:number)=>(
+                  <tr key={i} className="data-row">
+                    <td style={{...tdStyle,fontSize:11,fontFamily:'monospace'}}>{item.voucher_number}</td>
+                    <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.5)'}}>{item.dispatched_at?new Date(item.dispatched_at).toLocaleDateString('en-GB'):'—'}</td>
+                    <td style={{...tdStyle,fontSize:11,fontFamily:'monospace'}}>{item.sku}</td>
+                    <td style={{...tdStyle,fontSize:12}}>{item.item_name}</td>
+                    <td style={{...tdStyle,fontSize:12,color:'rgba(0,0,0,0.5)'}}>{item.size||'—'}</td>
+                    <td style={{...tdStyle,textAlign:'right'}}>{item.qty_requested}</td>
+                    <td style={{...tdStyle,textAlign:'right',fontWeight:600}}>{item.qty_dispatched}</td>
+                    <td style={{...tdStyle,textAlign:'right'}}>${parseFloat(item.unit_cost).toFixed(2)}</td>
+                    <td style={{...tdStyle,textAlign:'right',fontWeight:600}}>${parseFloat(item.dispatch_value).toFixed(2)}</td>
+                  </tr>
+                ))}
+                {siteLedgerModal.items.length===0&&<tr><td colSpan={9} style={{textAlign:'center',padding:32,color:'rgba(0,0,0,0.3)',fontSize:12}}>No dispatch records</td></tr>}
+              </tbody>
+            </table>
+          )}
+        </DialogContent>
+        <DialogActions style={{padding:'12px 24px',borderTop:'0.5px solid rgba(0,0,0,0.08)'}}>
+          <button onClick={()=>setSiteLedgerModal(prev=>({...prev,open:false}))} style={btnSecondary}>Close</button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── SNACKBAR ── */}
+      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={()=>setSnackbar(prev=>({...prev,open:false}))} anchorOrigin={{vertical:'bottom',horizontal:'center'}}>
+        <Alert severity={snackbar.severity} onClose={()=>setSnackbar(prev=>({...prev,open:false}))} style={{fontFamily:'inherit'}}>{snackbar.message}</Alert>
+      </Snackbar>
+    </div>
   );
 }
-// Build Mon Jan 26 08:47:06 CAT 2026
