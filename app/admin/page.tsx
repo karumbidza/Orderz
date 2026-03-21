@@ -2545,12 +2545,12 @@ export default function AdminPage() {
       </main>
 
       {/* ── ORDER SLIDE-IN PANEL ── */}
-      {orderModal.open && <div onClick={()=>setOrderModal({open:false,order:null,loading:false,dispatchInfo:null,customQty:{},dispatching:false,adjusting:false,adjustments:{},savingAdjustments:false})} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:199,backdropFilter:'blur(2px)'}} />}
-      <div style={{position:'fixed',top:0,right:0,bottom:0,width:580,background:'#fff',boxShadow:'-8px 0 40px rgba(0,0,0,0.08)',transform:orderModal.open?'translateX(0)':'translateX(100%)',transition:'transform 0.3s cubic-bezier(0.4,0,0.2,1)',zIndex:200,overflowY:'auto',display:'flex',flexDirection:'column'}}>
+      {orderModal.open && <div onClick={()=>setOrderModal({open:false,order:null,loading:false,dispatchInfo:null,customQty:{},dispatching:false,adjusting:false,adjustments:{},savingAdjustments:false})} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:399,backdropFilter:'blur(2px)'}} />}
+      <div style={{position:'fixed',top:0,right:0,bottom:0,width:580,background:'#fff',boxShadow:'-8px 0 40px rgba(0,0,0,0.08)',transform:orderModal.open?'translateX(0)':'translateX(100%)',transition:'transform 0.3s cubic-bezier(0.4,0,0.2,1)',zIndex:400,display:'flex',flexDirection:'column'}}>
         {orderModal.loading ? (
           <div style={{display:'flex',justifyContent:'center',alignItems:'center',flex:1}}><CircularProgress /></div>
         ) : orderModal.order ? (
-          <div className="print-area" style={{flex:1,display:'flex',flexDirection:'column'}}>
+          <div className="print-area" style={{flex:1,display:'flex',flexDirection:'column',overflowY:'auto'}}>
             {/* Panel header */}
             <div className="no-print" style={{padding:'16px 24px',borderBottom:'0.5px solid rgba(0,0,0,0.08)',display:'flex',alignItems:'center',gap:12,position:'sticky',top:0,background:'rgba(255,255,255,0.95)',backdropFilter:'blur(8px)',zIndex:10}}>
               <button onClick={()=>setOrderModal({open:false,order:null,loading:false,dispatchInfo:null,customQty:{},dispatching:false,adjusting:false,adjustments:{},savingAdjustments:false})} className="icon-btn" style={{fontSize:18}}>✕</button>
@@ -2673,8 +2673,8 @@ export default function AdminPage() {
       </div>
 
       {/* ── STOCK VIEW SLIDE-IN PANEL ── */}
-      {stockViewModal.open&&<div onClick={()=>setStockViewModal({open:false,item:null,history:[],loading:false,action:'none',quantity:'',reason:'',editingCost:false,newCost:''})} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:199,backdropFilter:'blur(2px)'}} />}
-      <div style={{position:'fixed',top:0,right:0,bottom:0,width:480,background:'#fff',boxShadow:'-8px 0 40px rgba(0,0,0,0.08)',transform:stockViewModal.open?'translateX(0)':'translateX(100%)',transition:'transform 0.3s cubic-bezier(0.4,0,0.2,1)',zIndex:200,overflowY:'auto',display:'flex',flexDirection:'column'}}>
+      {stockViewModal.open&&<div onClick={()=>setStockViewModal({open:false,item:null,history:[],loading:false,action:'none',quantity:'',reason:'',editingCost:false,newCost:''})} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:399,backdropFilter:'blur(2px)'}} />}
+      <div style={{position:'fixed',top:0,right:0,bottom:0,width:480,background:'#fff',boxShadow:'-8px 0 40px rgba(0,0,0,0.08)',transform:stockViewModal.open?'translateX(0)':'translateX(100%)',transition:'transform 0.3s cubic-bezier(0.4,0,0.2,1)',zIndex:400,display:'flex',flexDirection:'column'}}>
         {stockViewModal.item ? (
           <>
             <div style={{padding:'16px 24px',borderBottom:'0.5px solid rgba(0,0,0,0.08)',display:'flex',alignItems:'center',gap:12,position:'sticky',top:0,background:'rgba(255,255,255,0.95)',backdropFilter:'blur(8px)',zIndex:10}}>
@@ -2745,7 +2745,7 @@ export default function AdminPage() {
                 </>)}
               </div>
             </div>
-            <div style={{flex:1,padding:'0 24px 24px'}}>
+            <div style={{flex:1,padding:'0 24px 24px',overflowY:'auto'}}>
               <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(0,0,0,0.35)',padding:'14px 0 8px'}}>Movement History</div>
               {stockViewModal.loading?<div style={{display:'flex',justifyContent:'center',padding:24}}><CircularProgress size={20} /></div>:(
                 <table style={{width:'100%',borderCollapse:'collapse'}}>
