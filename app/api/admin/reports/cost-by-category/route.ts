@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: result, period: { from: dateFrom, to: dateTo } });
   } catch (err) {
-    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+    console.error('[cost-by-category] error:', err);
+    return NextResponse.json({ success: false, error: String(err), detail: err instanceof Error ? err.stack : undefined }, { status: 500 });
   }
 }
