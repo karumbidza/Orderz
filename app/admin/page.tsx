@@ -276,9 +276,9 @@ export default function AdminPage() {
   });
 
   // Modals
-  const [orderModal, setOrderModal] = useState<{ 
-    open: boolean; 
-    order: OrderDetail | null; 
+  const [orderModal, setOrderModal] = useState<{
+    open: boolean;
+    order: OrderDetail | null;
     loading: boolean;
     dispatchInfo: DispatchInfo | null;
     customQty: Record<number, number>;
@@ -286,6 +286,7 @@ export default function AdminPage() {
     adjusting: boolean;
     adjustments: Record<number, number>; // order_item_id -> qty_approved
     savingAdjustments: boolean;
+    confirmingPartial: boolean; // ORDERZ-DISPATCH — partial dispatch confirmation step
   }>({
     open: false,
     order: null,
@@ -296,6 +297,7 @@ export default function AdminPage() {
     adjusting: false,
     adjustments: {},
     savingAdjustments: false,
+    confirmingPartial: false,
   });
   const [dispatchModal, setDispatchModal] = useState<{
     open: boolean;
@@ -617,7 +619,7 @@ export default function AdminPage() {
   // ORDERS API
   // ─────────────────────────────────────────
   const viewOrder = async (orderId: number) => {
-    setOrderModal({ open: true, order: null, loading: true, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
+    setOrderModal({ open: true, order: null, loading: true, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false, confirmingPartial: false });
     try {
       // Load order details and dispatch info in parallel
       // ORDERZ-DISPATCH — no-store ensures fresh status on every open
@@ -639,24 +641,25 @@ export default function AdminPage() {
             }
           }
         }
-        setOrderModal({ 
-          open: true, 
-          order: orderData.data, 
+        setOrderModal({
+          open: true,
+          order: orderData.data,
           loading: false,
           dispatchInfo: dispatchData.success ? dispatchData.data : null,
           customQty: initialQty,
           dispatching: false,
           adjusting: false,
           adjustments: {},
-          savingAdjustments: false
+          savingAdjustments: false,
+          confirmingPartial: false,
         });
       } else {
         showMessage('Error loading order details', 'error');
-        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false, confirmingPartial: false });
       }
     } catch {
       showMessage('Failed to load order', 'error');
-      setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
+      setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false, confirmingPartial: false });
     }
   };
 
@@ -708,7 +711,7 @@ export default function AdminPage() {
       if (data.success) {
         showMessage(data.message, 'success');
         setDispatchModal({ open: false, loading: false, orderId: null, dispatchInfo: null, confirming: false, customQty: {} });
-        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false, confirmingPartial: false });
         loadOrders();
       } else {
         showMessage('Error: ' + data.error, 'error');
@@ -731,7 +734,7 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success) {
         showMessage('Order declined', 'success');
-        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false, confirmingPartial: false });
         loadOrders();
       } else showMessage('Error: ' + data.error, 'error');
     } catch {
@@ -763,7 +766,7 @@ export default function AdminPage() {
         if (orderModal.order) {
           window.open(`/api/admin/orders/${orderModal.order.id}/dispatch-note`, '_blank');
         }
-        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
+        setOrderModal({ open: false, order: null, loading: false, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false, confirmingPartial: false });
         loadOrders();
       } else {
         showMessage('Error: ' + data.error, 'error');
@@ -2542,7 +2545,7 @@ export default function AdminPage() {
       </main>
 
       {/* ── ORDER SLIDE-IN PANEL ── */}
-      {orderModal.open && <div onClick={()=>setOrderModal({open:false,order:null,loading:false,dispatchInfo:null,customQty:{},dispatching:false,adjusting:false,adjustments:{},savingAdjustments:false})} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:399,backdropFilter:'blur(2px)'}} />}
+      {orderModal.open && <div onClick={()=>setOrderModal({open:false,order:null,loading:false,dispatchInfo:null,customQty:{},dispatching:false,adjusting:false,adjustments:{},savingAdjustments:false,confirmingPartial:false})} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.2)',zIndex:399,backdropFilter:'blur(2px)'}} />}
       <div style={{position:'fixed',top:0,right:0,bottom:0,width:580,background:'#fff',boxShadow:'-8px 0 40px rgba(0,0,0,0.08)',transform:orderModal.open?'translateX(0)':'translateX(100%)',transition:'transform 0.3s cubic-bezier(0.4,0,0.2,1)',zIndex:400,display:'flex',flexDirection:'column'}}>
         {orderModal.loading ? (
           <div style={{display:'flex',justifyContent:'center',alignItems:'center',flex:1}}><CircularProgress /></div>
@@ -2550,7 +2553,7 @@ export default function AdminPage() {
           <div className="print-area" style={{flex:1,display:'flex',flexDirection:'column',overflowY:'auto'}}>
             {/* Panel header */}
             <div className="no-print" style={{padding:'16px 24px',borderBottom:'0.5px solid rgba(0,0,0,0.08)',display:'flex',alignItems:'center',gap:12,position:'sticky',top:0,background:'rgba(255,255,255,0.95)',backdropFilter:'blur(8px)',zIndex:10}}>
-              <button onClick={()=>setOrderModal({open:false,order:null,loading:false,dispatchInfo:null,customQty:{},dispatching:false,adjusting:false,adjustments:{},savingAdjustments:false})} className="icon-btn" style={{fontSize:18}}>✕</button>
+              <button onClick={()=>setOrderModal({open:false,order:null,loading:false,dispatchInfo:null,customQty:{},dispatching:false,adjusting:false,adjustments:{},savingAdjustments:false,confirmingPartial:false})} className="icon-btn" style={{fontSize:18}}>✕</button>
               <div style={{flex:1}}>
                 <div style={{fontFamily:'monospace',fontSize:13,fontWeight:600}}>{orderModal.order.order_number}</div>
                 <div style={{fontSize:12,color:'rgba(0,0,0,0.4)'}}>{orderModal.order.site_name} · {orderModal.order.city}</div>
@@ -2577,47 +2580,92 @@ export default function AdminPage() {
               </div>
               {orderModal.order.notes&&<div style={{marginTop:10,padding:'7px 12px',background:'rgba(0,0,0,0.03)',borderRadius:8,fontSize:12,color:'rgba(0,0,0,0.6)'}}>{orderModal.order.notes}</div>}
             </div>
-            {/* Items */}
+            {/* ORDERZ-DISPATCH — Items table with per-row status */}
             <div style={{flex:1,padding:'0 24px 16px'}}>
               <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(0,0,0,0.35)',padding:'14px 0 8px'}}>Items</div>
-              <table style={{width:'100%',borderCollapse:'collapse'}}>
-                <thead><tr>
-                  {['SKU','Product','Sz','Requested','Dispatched',...(orderModal.dispatchInfo&&['PENDING','PARTIAL_DISPATCH','PROCESSING'].includes(orderModal.order.status)?['Stock','Dispatch Qty']:[])].map(h=>(
-                    <th key={h} style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'7px 8px',textAlign:h==='Requested'||h==='Dispatched'||h==='Stock'||h==='Dispatch Qty'?'center':'left',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)'}}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {orderModal.order.items.map(item=>{
-                    const dispItem=orderModal.dispatchInfo?.items.find((d:any)=>d.id===item.id);
-                    const canDispatch=orderModal.dispatchInfo&&['PENDING','PARTIAL_DISPATCH','PROCESSING'].includes(orderModal.order!.status);
-                    return (
-                      <tr key={item.id} className="data-row">
-                        <td style={{fontSize:10,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle'}}><span style={{fontFamily:'monospace',background:'rgba(0,0,0,0.04)',borderRadius:4,padding:'1px 5px'}}>{item.sku}</span></td>
-                        <td style={{fontSize:12,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',fontWeight:500}}>{item.product}{item.employee_name?<span style={{fontSize:11,color:'rgba(0,0,0,0.4)',marginLeft:4}}>({item.employee_name})</span>:null}</td>
-                        <td style={{fontSize:12,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center',color:'rgba(0,0,0,0.5)'}}>{item.size||'—'}</td>
-                        <td style={{fontSize:13,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center',fontWeight:500}}>
-                          {orderModal.adjusting ? (
-                            <input type="number" min={1} max={item.quantity} value={orderModal.adjustments[item.id]??item.qty_approved??item.quantity} onChange={e=>setOrderModal(prev=>({...prev,adjustments:{...prev.adjustments,[item.id]:parseInt(e.target.value)||0}}))} style={{width:50,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,padding:'3px 6px',fontSize:12,textAlign:'center',fontFamily:'inherit'}} />
-                          ) : (
-                            item.qty_approved!=null&&item.qty_approved<item.quantity
-                              ?<><span style={{textDecoration:'line-through',color:'rgba(0,0,0,0.3)',marginRight:4}}>{item.quantity}</span><span style={{color:'#92400e',fontWeight:600}}>{item.qty_approved}</span></>
-                              :item.quantity
-                          )}
-                        </td>
-                        <td style={{fontSize:13,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center',color:item.qty_dispatched>0?'#065f46':'rgba(0,0,0,0.3)'}}>{item.qty_dispatched}</td>
-                        {canDispatch&&<>
-                          <td style={{fontSize:12,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center',color:(dispItem?.stock_available||0)===0?'#9f1239':'#065f46',fontWeight:600}}>{dispItem?.stock_available??'—'}</td>
-                          <td style={{fontSize:12,padding:'8px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle',textAlign:'center'}}>
-                            {(item.qty_approved??item.quantity)>item.qty_dispatched?(
-                              <input type="number" min={0} max={Math.min((item.qty_approved??item.quantity)-item.qty_dispatched,dispItem?.stock_available||0)} value={orderModal.customQty[item.id]??0} onChange={e=>setOrderModal(prev=>({...prev,customQty:{...prev.customQty,[item.id]:parseInt(e.target.value)||0}}))} style={{width:50,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,padding:'3px 6px',fontSize:12,textAlign:'center',fontFamily:'inherit'}} />
-                            ):<span style={{color:'#065f46',fontSize:13}}>✓</span>}
-                          </td>
-                        </>}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              {(()=>{
+                const canDisp = !!(orderModal.dispatchInfo && ['PENDING','PARTIAL_DISPATCH','PROCESSING'].includes(orderModal.order!.status));
+                const tdB: React.CSSProperties = {padding:'8px 6px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',verticalAlign:'middle'};
+                const tdC: React.CSSProperties = {...tdB,textAlign:'center'};
+                return (
+                  <table style={{width:'100%',borderCollapse:'collapse'}}>
+                    <thead><tr>
+                      <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'6px 6px',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)',width:72}}></th>
+                      <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'6px 6px',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)',textAlign:'left'}}>Item</th>
+                      <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'6px 6px',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)',textAlign:'center',width:32}}>Sz</th>
+                      <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'6px 6px',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)',textAlign:'center',width:54}}>Ordered</th>
+                      <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'6px 6px',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)',textAlign:'center',width:64}}>Sent</th>
+                      <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'6px 6px',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)',textAlign:'center',width:54}}>Pending</th>
+                      {canDisp&&<th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',color:'rgba(0,0,0,0.4)',letterSpacing:'0.06em',padding:'6px 6px',background:'rgba(0,0,0,0.02)',borderBottom:'0.5px solid rgba(0,0,0,0.08)',textAlign:'center',width:64}}>Send Qty</th>}
+                    </tr></thead>
+                    <tbody>
+                      {orderModal.order!.items.map(item=>{
+                        const dispItem = orderModal.dispatchInfo?.items.find((d:any)=>d.id===item.id);
+                        const effectiveQty = item.qty_approved ?? item.quantity;
+                        const remaining = Math.max(0, effectiveQty - item.qty_dispatched);
+                        const isFullyDone = item.qty_dispatched > 0 && remaining === 0;
+                        const isPartiallyDone = item.qty_dispatched > 0 && remaining > 0;
+                        const stockAvail = dispItem?.stock_available ?? 0;
+                        const hasStock = canDisp && stockAvail > 0;
+
+                        // Row background
+                        const rowBg = isFullyDone ? '#f0fdf4'
+                          : isPartiallyDone ? '#fffbeb'
+                          : canDisp && remaining > 0 && !hasStock ? '#fff5f5'
+                          : '';
+
+                        // Status chip
+                        const chip = isFullyDone
+                          ? <span style={{fontSize:11,fontWeight:700,color:'#065f46'}}>✓ Done</span>
+                          : isPartiallyDone
+                            ? <span style={{fontSize:10,fontWeight:600,background:'#ede9fe',color:'#5b21b6',borderRadius:4,padding:'2px 5px'}}>Part sent</span>
+                            : canDisp && remaining > 0
+                              ? stockAvail === 0
+                                ? <span style={{fontSize:10,fontWeight:600,background:'#fee2e2',color:'#9f1239',borderRadius:4,padding:'2px 5px'}}>No stock</span>
+                                : stockAvail >= remaining
+                                  ? <span style={{fontSize:10,fontWeight:600,background:'#d1fae5',color:'#065f46',borderRadius:4,padding:'2px 5px'}}>Ready</span>
+                                  : <span style={{fontSize:10,fontWeight:600,background:'#fef3c7',color:'#92400e',borderRadius:4,padding:'2px 5px'}}>Low stock</span>
+                              : <span style={{fontSize:12,color:'rgba(0,0,0,0.25)'}}>—</span>;
+
+                        return (
+                          <tr key={item.id} style={{background:rowBg}}>
+                            <td style={{...tdB,width:72}}>{chip}</td>
+                            <td style={tdB}>
+                              <div style={{fontSize:12,fontWeight:500,lineHeight:1.3}}>{item.product}{item.size?<span style={{color:'rgba(0,0,0,0.4)',marginLeft:4,fontSize:11}}>{item.size}</span>:null}</div>
+                              {item.employee_name&&<div style={{fontSize:11,color:'rgba(0,0,0,0.4)'}}>{item.employee_name}</div>}
+                              <div style={{fontFamily:'monospace',fontSize:10,color:'rgba(0,0,0,0.35)',marginTop:1}}>{item.sku}</div>
+                            </td>
+                            <td style={{...tdC,width:32,fontSize:12,color:'rgba(0,0,0,0.45)'}}>{item.size||'—'}</td>
+                            <td style={{...tdC,width:54,fontSize:13,fontWeight:500}}>
+                              {orderModal.adjusting
+                                ? <input type="number" min={1} max={item.quantity} value={orderModal.adjustments[item.id]??item.qty_approved??item.quantity} onChange={e=>setOrderModal(prev=>({...prev,adjustments:{...prev.adjustments,[item.id]:parseInt(e.target.value)||0}}))} style={{width:46,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,padding:'3px 4px',fontSize:12,textAlign:'center',fontFamily:'inherit'}} />
+                                : item.qty_approved!=null&&item.qty_approved<item.quantity
+                                  ?<><span style={{textDecoration:'line-through',color:'rgba(0,0,0,0.3)',marginRight:3,fontSize:11}}>{item.quantity}</span><span style={{color:'#92400e',fontWeight:600}}>{item.qty_approved}</span></>
+                                  : item.quantity}
+                            </td>
+                            <td style={{...tdC,width:64,fontSize:13,color:item.qty_dispatched>0?'#065f46':'rgba(0,0,0,0.3)',fontWeight:item.qty_dispatched>0?600:400}}>
+                              {item.qty_dispatched>0?'✓ '+item.qty_dispatched:'—'}
+                            </td>
+                            <td style={{...tdC,width:54,fontSize:13,color:remaining>0?'#92400e':'rgba(0,0,0,0.3)',fontWeight:remaining>0?500:400}}>
+                              {remaining>0?remaining:'—'}
+                            </td>
+                            {canDisp&&(
+                              <td style={{...tdC,width:64}}>
+                                {isFullyDone
+                                  ? <span style={{fontSize:12,color:'#065f46',fontWeight:600}}>✓</span>
+                                  : !hasStock
+                                    ? <span style={{fontSize:11,color:'#9f1239',fontWeight:600}}>—</span>
+                                    : <input type="number" min={0} max={Math.min(remaining,stockAvail)} value={orderModal.customQty[item.id]??0} onChange={e=>setOrderModal(prev=>({...prev,customQty:{...prev.customQty,[item.id]:parseInt(e.target.value)||0}}))} style={{width:46,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,padding:'3px 4px',fontSize:12,textAlign:'center',fontFamily:'inherit'}} />
+                                }
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
             {/* Actions */}
             <div className="no-print" style={{padding:'14px 24px',borderTop:'0.5px solid rgba(0,0,0,0.08)',background:'#fff',display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -2628,13 +2676,58 @@ export default function AdminPage() {
                       <button onClick={handleSaveAdjustments} disabled={orderModal.savingAdjustments} style={btnPrimary}>{orderModal.savingAdjustments?'Saving…':'Save Adjustments'}</button>
                       <button onClick={()=>setOrderModal(prev=>({...prev,adjusting:false,adjustments:{}}))} style={btnSecondary}>Cancel</button>
                     </>
+                  ) : orderModal.confirmingPartial ? (
+                    // ORDERZ-DISPATCH — partial dispatch confirmation panel
+                    <div style={{flex:'1 1 100%',display:'flex',flexDirection:'column',gap:10}}>
+                      <div style={{background:'#fef3c7',border:'0.5px solid #fde68a',borderRadius:8,padding:'12px 14px',fontSize:12,color:'#92400e'}}>
+                        <div style={{fontWeight:600,marginBottom:8}}>&#9888; Confirm partial dispatch</div>
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                          <div>
+                            <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:4,color:'#065f46'}}>&#10003; Will dispatch</div>
+                            {orderModal.order!.items.filter(i=>(orderModal.customQty[i.id]||0)>0).map(i=>(
+                              <div key={i.id} style={{fontSize:11,padding:'1px 0'}}>{i.product}{i.size?` (${i.size})`:''}: <strong>{orderModal.customQty[i.id]}</strong></div>
+                            ))}
+                          </div>
+                          <div>
+                            <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:4,color:'#9f1239'}}>&#10005; No stock — skipped</div>
+                            {orderModal.order!.items.filter(i=>{
+                              const dispI=orderModal.dispatchInfo?.items.find((d:any)=>d.id===i.id);
+                              const rem=Math.max(0,(i.qty_approved??i.quantity)-i.qty_dispatched);
+                              return rem>0&&(dispI?.stock_available||0)===0;
+                            }).map(i=>(
+                              <div key={i.id} style={{fontSize:11,padding:'1px 0',color:'#9f1239'}}>{i.product}{i.size?` (${i.size})`:''}</div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{display:'flex',gap:8}}>
+                        <button onClick={handleOrderModalDispatch} disabled={orderModal.dispatching} style={btnPrimary}>{orderModal.dispatching?'Dispatching…':'Confirm Partial Dispatch'}</button>
+                        <button onClick={()=>setOrderModal(prev=>({...prev,confirmingPartial:false}))} style={btnSecondary}>Cancel</button>
+                      </div>
+                    </div>
                   ) : (
                     <>
-                      <button onClick={handleOrderModalDispatch} disabled={orderModal.dispatching||Object.values(orderModal.customQty).reduce((s,q)=>s+(q as number),0)===0} style={btnPrimary}>{orderModal.dispatching?'Dispatching…':'Dispatch'}</button>
-                      {Object.values(orderModal.customQty).reduce((s,q)=>s+(q as number),0)===0&&!orderModal.dispatching&&(
-                        <span style={{fontSize:12,color:'#92400e',background:'#fef3c7',border:'0.5px solid #fde68a',borderRadius:8,padding:'6px 12px',display:'inline-flex',alignItems:'center',gap:5}}>&#9888; No stock available — add stock to continue</span>
-                      )}
-                      <button onClick={()=>setOrderModal(prev=>({...prev,adjusting:true}))} style={btnSecondary}>Adjust Qty</button>
+                      {(()=>{
+                        const totalQty = Object.values(orderModal.customQty).reduce((s,q)=>s+(q as number),0);
+                        const hasNoStockItems = orderModal.order!.items.some(i=>{
+                          const dispI=orderModal.dispatchInfo?.items.find((d:any)=>d.id===i.id);
+                          const rem=Math.max(0,(i.qty_approved??i.quantity)-i.qty_dispatched);
+                          return rem>0&&(dispI?.stock_available||0)===0;
+                        });
+                        const isPartialSend = hasNoStockItems && totalQty > 0;
+                        return (
+                          <>
+                            <button
+                              onClick={()=>isPartialSend?setOrderModal(prev=>({...prev,confirmingPartial:true})):handleOrderModalDispatch()}
+                              disabled={orderModal.dispatching||totalQty===0}
+                              style={btnPrimary}
+                            >
+                              {orderModal.dispatching?'Dispatching…':isPartialSend?'Partial Dispatch →':'Dispatch'}
+                            </button>
+                            <button onClick={()=>setOrderModal(prev=>({...prev,adjusting:true}))} style={btnSecondary}>Adjust Qty</button>
+                          </>
+                        );
+                      })()}
                       {showDeclineForm ? (
                         <div style={{display:'flex',gap:8,alignItems:'center',flex:'1 1 100%'}}>
                           <input placeholder="Decline reason…" value={declineInput} onChange={e=>setDeclineInput(e.target.value)} style={{...inputStyle,flex:1}} />
