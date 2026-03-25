@@ -59,14 +59,11 @@ export async function GET(
       can_dispatch_partial: items.some((i: any) => i.dispatch_status === 'READY' || i.dispatch_status === 'PARTIAL')
     };
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        order_id: orderId,
-        items,
-        summary
-      }
-    });
+    // ORDERZ-DISPATCH — prevent Vercel edge caching stale stock/status data
+    return NextResponse.json(
+      { success: true, data: { order_id: orderId, items, summary } },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
 
   } catch (error) {
     console.error('Error checking dispatch status:', error);

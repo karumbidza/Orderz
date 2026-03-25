@@ -68,13 +68,11 @@ export async function GET(
       ORDER BY oi.item_name, oi.size
     `;
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...order,
-        items: items,
-      },
-    });
+    // ORDERZ-DISPATCH — no-store prevents Vercel edge from serving stale status
+    return NextResponse.json(
+      { success: true, data: { ...order, items } },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
 
   } catch (error) {
     console.error('Error fetching order details:', error);

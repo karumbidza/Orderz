@@ -622,10 +622,11 @@ export default function AdminPage() {
     setOrderModal({ open: true, order: null, loading: true, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false, confirmingPartial: false });
     try {
       // Load order details and dispatch info in parallel
-      // ORDERZ-DISPATCH — no-store ensures fresh status on every open
+      // ORDERZ-DISPATCH — timestamp busts Vercel edge cache on every open
+      const t = Date.now();
       const [orderRes, dispatchRes] = await Promise.all([
-        fetch(`/api/admin/orders/${orderId}`, { cache: 'no-store' }),
-        fetch(`/api/admin/orders/${orderId}/dispatch`, { cache: 'no-store' })
+        fetch(`/api/admin/orders/${orderId}?_t=${t}`, { cache: 'no-store' }),
+        fetch(`/api/admin/orders/${orderId}/dispatch?_t=${t}`, { cache: 'no-store' })
       ]);
       const orderData = await orderRes.json();
       const dispatchData = await dispatchRes.json();
