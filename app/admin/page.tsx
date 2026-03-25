@@ -620,9 +620,10 @@ export default function AdminPage() {
     setOrderModal({ open: true, order: null, loading: true, dispatchInfo: null, customQty: {}, dispatching: false, adjusting: false, adjustments: {}, savingAdjustments: false });
     try {
       // Load order details and dispatch info in parallel
+      // ORDERZ-DISPATCH — no-store ensures fresh status on every open
       const [orderRes, dispatchRes] = await Promise.all([
-        fetch(`/api/admin/orders/${orderId}`),
-        fetch(`/api/admin/orders/${orderId}/dispatch`)
+        fetch(`/api/admin/orders/${orderId}`, { cache: 'no-store' }),
+        fetch(`/api/admin/orders/${orderId}/dispatch`, { cache: 'no-store' })
       ]);
       const orderData = await orderRes.json();
       const dispatchData = await dispatchRes.json();
@@ -2555,7 +2556,7 @@ export default function AdminPage() {
                 <div style={{fontSize:12,color:'rgba(0,0,0,0.4)'}}>{orderModal.order.site_name} · {orderModal.order.city}</div>
               </div>
               <StatusBadge status={orderModal.order.status} />
-              <button onClick={()=>window.print()} className="icon-btn" title="Print">⎙</button>
+              <button onClick={()=>window.open(`/api/excel/order-view/${orderModal.order!.id}`,'_blank')} className="icon-btn" title="Print / View Order">⎙</button>
             </div>
             {/* Order meta */}
             <div style={{padding:'14px 24px',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
@@ -2629,7 +2630,7 @@ export default function AdminPage() {
                     </>
                   ) : (
                     <>
-                      <button onClick={handleOrderModalDispatch} disabled={orderModal.dispatching} style={btnPrimary}>{orderModal.dispatching?'Dispatching…':'Dispatch'}</button>
+                      <button onClick={handleOrderModalDispatch} disabled={orderModal.dispatching||Object.values(orderModal.customQty).reduce((s,q)=>s+(q as number),0)===0} style={btnPrimary}>{orderModal.dispatching?'Dispatching…':'Dispatch'}</button>
                       <button onClick={()=>setOrderModal(prev=>({...prev,adjusting:true}))} style={btnSecondary}>Adjust Qty</button>
                       {showDeclineForm ? (
                         <div style={{display:'flex',gap:8,alignItems:'center',flex:'1 1 100%'}}>

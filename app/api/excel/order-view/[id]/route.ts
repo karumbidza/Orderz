@@ -328,6 +328,25 @@ export async function GET(
       </div>
     </div>
 
+    ${(orderStatus === 'DISPATCHED' || orderStatus === 'PARTIAL_DISPATCH' || orderStatus === 'RECEIVED') ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin:8px 0 24px;padding:0 2px">
+      <div>
+        <div style="border-top:0.5px solid rgba(0,0,0,0.2);padding-top:10px;margin-top:8px">
+          <div style="font-size:10px;font-weight:600;color:rgba(0,0,0,0.35);letter-spacing:0.07em;text-transform:uppercase">Dispatched by</div>
+          <div style="font-size:13px;color:rgba(0,0,0,0.6);margin-top:3px">${order.dispatched_by ? String(order.dispatched_by) : 'Stores / Warehouse'}</div>
+          ${order.dispatched_at ? `<div style="font-size:11px;color:rgba(0,0,0,0.35);margin-top:2px">${formatDate(order.dispatched_at)}</div>` : ''}
+        </div>
+      </div>
+      <div>
+        <div style="border-top:0.5px solid rgba(0,0,0,0.2);padding-top:10px;margin-top:8px">
+          <div style="font-size:10px;font-weight:600;color:rgba(0,0,0,0.35);letter-spacing:0.07em;text-transform:uppercase">Received by</div>
+          <div style="font-size:13px;color:rgba(0,0,0,0.6);margin-top:3px">${order.received_by ? String(order.received_by) : String(order.contact_name ?? order.site_name ?? '')}</div>
+          ${order.received_at ? `<div style="font-size:11px;color:rgba(0,0,0,0.35);margin-top:2px">${formatDate(order.received_at)}</div>` : ''}
+        </div>
+      </div>
+    </div>
+    ` : ''}
+
     <div class="action-bar no-print">
       <button class="btn-secondary" onclick="window.print()">&#8595; Download / Print PDF</button>
       ${canMarkReceived ? `<button class="btn-success" id="receiveBtn" onclick="markReceived(${String(order.id)})">&#10003; Mark as Received</button>` : ''}
