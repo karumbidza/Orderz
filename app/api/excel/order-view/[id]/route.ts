@@ -1,4 +1,5 @@
 // ORDERZ-ORDERVIEW
+// ORDERZ-DISPATCH
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 
@@ -103,23 +104,86 @@ export async function GET(
     const canMarkReceived =
       orderStatus === 'DISPATCHED' || orderStatus === 'PARTIAL_DISPATCH';
 
-    const itemRows = orderItems
-      .map((item) => {
-        const qty =
-          (item.qty_dispatched as number) ??
-          (item.qty_approved as number) ??
-          (item.qty_requested as number) ??
-          0;
-        return `
-      <tr>
-        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;font-family:monospace;color:rgba(0,0,0,0.6)">${item.sku ?? '&mdash;'}</td>
-        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px">${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(0,0,0,0.4);font-size:11px">${item.size}</span>` : ''}</td>
-        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:center">${qty}</td>
-        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:right">${Number(item.unit_cost ?? 0).toFixed(2)}</td>
-        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:right;font-weight:500">${Number(item.line_total ?? 0).toFixed(2)}</td>
+    // ORDERZ-DISPATCH — dispatch columns: Ordered / Dispatched / Pending
+    const itemRows = orderItems.map((item) => {
+      const ordered    = Number(item.qty_requested) || 0;
+      const dispatched = Number(item.qty_dispatched) || 0;
+      const pending    = Math.max(0, ordered - dispatched);
+      const isPartial  = dispatched > 0 && pending > 0;
+      const isNotSent  = dispatched === 0;
+
+      const dispatchedCell = dispatched > 0
+        ? `<td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:center;color:#065f46;font-weight:500">&#10003; ${dispatched}</td>`
+        : `<td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:center;color:rgba(0,0,0,0.25)">&mdash;</td>`;
+
+      const pendingCell = pending > 0
+        ? `<td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:center;color:#92400e;font-weight:500">${pending}</td>`
+        : `<td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:center;color:rgba(0,0,0,0.25)">&mdash;</td>`;
+
+      const rowBg = isNotSent
+        ? 'background:rgba(0,0,0,0.015)'
+        : isPartial
+          ? 'background:#fffbeb'
+          : '';
+
+      return `
+      <tr style="${rowBg}">
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;font-weight:500">${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(0,0,0,0.4);font-size:11px">${item.size}</span>` : ''}</td>
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:12px;color:rgba(0,0,0,0.45);font-family:monospace">${item.sku ?? '&mdash;'}</td>
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:center">${ordered}</td>
+        ${dispatchedCell}
+        ${pendingCell}
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:right">$${Number(item.unit_cost ?? 0).toFixed(2)}</td>
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:right;font-weight:500">$${Number(item.line_total ?? 0).toFixed(2)}</td>
       </tr>`;
-      })
-      .join('');
+    }).join('');
+
+    // ORDERZ-DISPATCH — status banner
+    const statusBanner = (): string => {
+      if (orderStatus === 'RECEIVED') {
+        return `<div style="background:#d1fae5;color:#065f46;border:0.5px solid #a7f3d0;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px">&#10003; Received at site</div>`;
+      }
+      if (orderStatus === 'DISPATCHED') {
+        return `<div style="background:#d1fae5;color:#065f46;border:0.5px solid #a7f3d0;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px">&#10003; All items dispatched</div>`;
+      }
+      if (orderStatus === 'PARTIAL_DISPATCH') {
+        return `<div style="background:#fef3c7;color:#92400e;border:0.5px solid #fde68a;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px">&#9888; PARTIAL DISPATCH &mdash; This delivery contains only some items from the order. Remaining items will be dispatched when stock is available.</div>`;
+      }
+      if (orderStatus === 'PENDING' || orderStatus === 'PROCESSING') {
+        return `<div style="background:#dbeafe;color:#1e40af;border:0.5px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px">&#8505; Order is being processed</div>`;
+      }
+      if (orderStatus === 'DECLINED') {
+        return `<div style="background:#ffe4e6;color:#9f1239;border:0.5px solid #fecdd3;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;font-weight:500">&#10005; This order was declined</div>`;
+      }
+      return '';
+    };
+
+    // ORDERZ-DISPATCH — dispatch summary section
+    const showSummary = orderStatus === 'DISPATCHED' || orderStatus === 'PARTIAL_DISPATCH' || orderStatus === 'RECEIVED';
+    const dispatchedItems = orderItems.filter(i => Number(i.qty_dispatched) > 0);
+    const pendingItems = orderItems.filter(i => (Number(i.qty_requested) - Number(i.qty_dispatched)) > 0);
+
+    const dispatchSummary = showSummary ? `
+  <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.08);border-radius:14px;overflow:hidden;margin-bottom:12px">
+    <div style="padding:14px 20px;border-bottom:0.5px solid rgba(0,0,0,0.06)">
+      <span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.35);letter-spacing:.06em;text-transform:uppercase">Dispatch Summary</span>
+    </div>
+    <div style="display:grid;grid-template-columns:${pendingItems.length > 0 ? '1fr 1fr' : '1fr'};gap:0;padding:0">
+      <div style="padding:16px 20px;${pendingItems.length > 0 ? 'border-right:0.5px solid rgba(0,0,0,0.06)' : ''}">
+        <div style="font-size:12px;font-weight:600;color:#065f46;margin-bottom:10px">&#10003; Items Dispatched (This Delivery)</div>
+        ${dispatchedItems.map(i => `<div style="font-size:12px;color:rgba(0,0,0,0.65);padding:3px 0"><span style="color:#065f46;font-size:11px">&#8226;</span> ${String(i.item_name)} (${String(i.sku)}): <strong>${String(i.qty_dispatched)} of ${String(i.qty_requested)}</strong></div>`).join('')}
+      </div>
+      ${pendingItems.length > 0 ? `
+      <div style="padding:16px 20px">
+        <div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:10px">&#9888; Items Pending (To Follow)</div>
+        ${pendingItems.map(i => {
+          const pend = Number(i.qty_requested) - Number(i.qty_dispatched);
+          return `<div style="font-size:12px;color:rgba(0,0,0,0.65);padding:3px 0"><span style="color:#92400e;font-size:11px">&#8226;</span> ${String(i.item_name)} (${String(i.sku)}): <strong>${pend} pending</strong></div>`;
+        }).join('')}
+        <div style="font-size:11px;color:rgba(0,0,0,0.35);margin-top:10px;font-style:italic">Pending items will be dispatched when stock becomes available.</div>
+      </div>` : ''}
+    </div>
+  </div>` : '';
 
     const cityAddress = [order.city, order.address].filter(Boolean).join(' &middot; ');
     const phoneEmail = [order.phone, order.email].filter(Boolean).join(' &middot; ');
@@ -211,6 +275,8 @@ export async function GET(
       </div>
     </div>
 
+    ${statusBanner()}
+
     <div class="card">
       <div class="card-header">
         <span class="card-title">Order Items (${orderItems.length} line ${orderItems.length === 1 ? 'item' : 'items'})</span>
@@ -218,15 +284,17 @@ export async function GET(
       <table>
         <thead>
           <tr>
-            <th>SKU</th>
             <th>Item</th>
-            <th style="text-align:center">Qty</th>
-            <th style="text-align:right">Unit Cost</th>
-            <th style="text-align:right">Total</th>
+            <th>SKU</th>
+            <th style="text-align:center">Ordered</th>
+            <th style="text-align:center">Dispatched</th>
+            <th style="text-align:center">Pending</th>
+            <th style="text-align:right">Unit $</th>
+            <th style="text-align:right">Total $</th>
           </tr>
         </thead>
         <tbody>
-          ${itemRows || '<tr><td colspan="5" style="padding:24px;text-align:center;color:rgba(0,0,0,0.35)">No items found</td></tr>'}
+          ${itemRows || '<tr><td colspan="7" style="padding:24px;text-align:center;color:rgba(0,0,0,0.35)">No items found</td></tr>'}
         </tbody>
       </table>
       <div class="total-row">
@@ -234,6 +302,8 @@ export async function GET(
         <span class="total-amount">${Number(order.total_amount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
       </div>
     </div>
+
+    ${dispatchSummary}
 
     <div class="card">
       <div class="card-header"><span class="card-title">Status History</span></div>
