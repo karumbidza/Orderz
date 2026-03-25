@@ -7,6 +7,12 @@
   "env": {
     "NODE_ENV": "production"
   },
+  "crons": [
+    {
+      "path": "/api/cron/auto-receive",
+      "schedule": "0 6 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",

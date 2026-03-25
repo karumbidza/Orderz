@@ -87,23 +87,29 @@ export async function GET(
       }
     };
 
-    const itemRows = orderItems
-      .map((item) => {
-        const qty =
-          (item.qty_dispatched as number) ??
-          (item.qty_approved as number) ??
-          (item.qty_requested as number) ??
-          0;
-        return `
-      <tr>
-        <td>${item.sku ?? '&mdash;'}</td>
-        <td>${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(0,0,0,0.45);font-size:11px">${item.size}</span>` : ''}</td>
-        <td style="text-align:center">${qty}</td>
+    // ORDERZ-DISPATCH — Ordered / Dispatched / Pending columns
+    const itemRows = orderItems.map((item) => {
+      const ordered    = Number(item.qty_requested) || 0;
+      const dispatched = Number(item.qty_dispatched) || 0;
+      const pending    = Math.max(0, ordered - dispatched);
+      const rowStyle   = pending > 0 ? ' style="background:#fffbeb"' : '';
+      return `
+      <tr${rowStyle}>
+        <td>${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(255,255,255,0.55);font-size:10px">${item.size}</span>` : ''}</td>
+        <td style="font-family:monospace;font-size:11px">${item.sku ?? '&mdash;'}</td>
+        <td style="text-align:center">${ordered}</td>
+        <td style="text-align:center;color:${dispatched > 0 ? '#065f46' : 'rgba(0,0,0,0.3)'};font-weight:${dispatched > 0 ? 600 : 400}">${dispatched > 0 ? '&#10003; ' + dispatched : '&mdash;'}</td>
+        <td style="text-align:center;color:${pending > 0 ? '#92400e' : 'rgba(0,0,0,0.25)'};font-weight:${pending > 0 ? 600 : 400}">${pending > 0 ? pending : '&mdash;'}</td>
         <td style="text-align:right">${Number(item.unit_cost ?? 0).toFixed(2)}</td>
-        <td style="text-align:right">${Number(item.line_total ?? 0).toFixed(2)}</td>
+        <td style="text-align:right;font-weight:500">${Number(item.line_total ?? 0).toFixed(2)}</td>
       </tr>`;
-      })
-      .join('');
+    }).join('');
+
+    const isPartial = (order.status as string) === 'PARTIAL_DISPATCH';
+    const partialBanner = isPartial ? `
+  <div style="background:#fef3c7;color:#92400e;border:0.5px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;font-weight:600">
+    &#9888; PARTIAL DISPATCH &mdash; Some items are pending. Remaining stock will be dispatched when available.
+  </div>` : '';
 
     const cityAddress = [order.city, order.address].filter(Boolean).join(' &middot; ');
 
@@ -130,11 +136,11 @@ export async function GET(
     table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
     thead tr { background: #0a0a0a; color: #fff; }
     th { padding: 10px 14px; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; text-align: left; }
-    th:nth-child(3) { text-align: center; }
-    th:nth-child(4), th:nth-child(5) { text-align: right; }
+    th:nth-child(3), th:nth-child(4), th:nth-child(5) { text-align: center; }
+    th:nth-child(6), th:nth-child(7) { text-align: right; }
     td { padding: 10px 14px; font-size: 13px; border-bottom: 0.5px solid rgba(0,0,0,0.07); }
-    td:nth-child(3) { text-align: center; }
-    td:nth-child(4), td:nth-child(5) { text-align: right; }
+    td:nth-child(3), td:nth-child(4), td:nth-child(5) { text-align: center; }
+    td:nth-child(6), td:nth-child(7) { text-align: right; }
     .total-section { display: flex; justify-content: flex-end; align-items: center; gap: 32px; padding: 16px 14px; border-top: 2px solid #0a0a0a; margin-bottom: 40px; }
     .total-label { font-size: 13px; color: rgba(0,0,0,0.45); }
     .total-amount { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }
@@ -158,6 +164,8 @@ export async function GET(
     <button class="btn btn-dark" onclick="window.print()">Print / Save as PDF</button>
     <button class="btn btn-light" onclick="window.close()">Close</button>
   </div>
+
+  ${partialBanner}
 
   <div class="header">
     <div>
@@ -192,15 +200,17 @@ export async function GET(
   <table>
     <thead>
       <tr>
+        <th>Item</th>
         <th>SKU</th>
-        <th>Description</th>
-        <th>Qty</th>
+        <th>Ordered</th>
+        <th>Dispatched</th>
+        <th>Pending</th>
         <th>Unit Cost</th>
         <th>Total</th>
       </tr>
     </thead>
     <tbody>
-      ${itemRows || '<tr><td colspan="5" style="padding:20px;text-align:center;color:rgba(0,0,0,0.4)">No items found</td></tr>'}
+      ${itemRows || '<tr><td colspan="7" style="padding:20px;text-align:center;color:rgba(0,0,0,0.4)">No items found</td></tr>'}
     </tbody>
   </table>
 

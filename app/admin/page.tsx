@@ -20,9 +20,9 @@ function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { bg: string; color: string; label: string }> = {
     PENDING: { bg: '#fef3c7', color: '#92400e', label: 'Pending' },
     PROCESSING: { bg: '#dbeafe', color: '#1e40af', label: 'Processing' },
-    DISPATCHED: { bg: '#dbeafe', color: '#1e40af', label: 'Dispatched' },
+    DISPATCHED: { bg: '#d1fae5', color: '#065f46', label: 'Dispatched' },
     PARTIAL_DISPATCH: { bg: '#ede9fe', color: '#5b21b6', label: 'Partial' },
-    RECEIVED: { bg: '#d1fae5', color: '#065f46', label: 'Received' },
+    RECEIVED: { bg: '#065f46', color: '#ecfdf5', label: 'Received' },
     DECLINED: { bg: '#ffe4e6', color: '#9f1239', label: 'Declined' },
     CANCELLED: { bg: '#fee2e2', color: '#7f1d1d', label: 'Cancelled' },
   };
@@ -2631,6 +2631,9 @@ export default function AdminPage() {
                   ) : (
                     <>
                       <button onClick={handleOrderModalDispatch} disabled={orderModal.dispatching||Object.values(orderModal.customQty).reduce((s,q)=>s+(q as number),0)===0} style={btnPrimary}>{orderModal.dispatching?'Dispatching…':'Dispatch'}</button>
+                      {Object.values(orderModal.customQty).reduce((s,q)=>s+(q as number),0)===0&&!orderModal.dispatching&&(
+                        <span style={{fontSize:12,color:'#92400e',background:'#fef3c7',border:'0.5px solid #fde68a',borderRadius:8,padding:'6px 12px',display:'inline-flex',alignItems:'center',gap:5}}>&#9888; No stock available — add stock to continue</span>
+                      )}
                       <button onClick={()=>setOrderModal(prev=>({...prev,adjusting:true}))} style={btnSecondary}>Adjust Qty</button>
                       {showDeclineForm ? (
                         <div style={{display:'flex',gap:8,alignItems:'center',flex:'1 1 100%'}}>
