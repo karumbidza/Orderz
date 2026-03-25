@@ -632,16 +632,34 @@ export default function AdminPage() {
       const dispatchData = await dispatchRes.json();
       
       if (orderData.success) {
-        // Initialize custom quantities from dispatch info
-        const initialQty: Record<number, number> = {};
-        if (dispatchData.success) {
-          for (const item of dispatchData.data.items) {
-            const remaining = item.qty_requested - item.qty_dispatched;
-            if (remaining > 0) {
-              initialQty[item.id] = Math.min(remaining, item.stock_available);
-            }
-          }
+        // ORDERZ-DISPATCH — Merge dispatch data into order to survive stale order API cache.
+        // The dispatch endpoint is always live; use it as the source of truth for
+        // qty_dispatched values and to derive the correct order status.
+        const dispItems: any[] = dispatchData.success ? dispatchData.data.items : [];
+
+        // Override qty_dispatched on each order item from the fresh dispatch info
+        if (dispItems.length > 0) {
+          orderData.data.items = orderData.data.items.map((item: any) => {
+            const dispItem = dispItems.find((d: any) => d.id === item.id);
+            return dispItem ? { ...item, qty_dispatched: dispItem.qty_dispatched } : item;
+          });
         }
+
+        // Derive correct status from dispatch data if order API returned stale PENDING/PROCESSING
+        if (dispatchData.success && (orderData.data.status === 'PENDING' || orderData.data.status === 'PROCESSING')) {
+          const allFulfilled = dispItems.length > 0 && dispItems.every((d: any) => d.qty_dispatched >= d.qty_requested);
+          const anyFulfilled = dispItems.some((d: any) => d.qty_dispatched > 0);
+          if (allFulfilled) orderData.data.status = 'DISPATCHED';
+          else if (anyFulfilled) orderData.data.status = 'PARTIAL_DISPATCH';
+        }
+
+        // Initialize send-qty inputs from fresh dispatch info
+        const initialQty: Record<number, number> = {};
+        for (const item of dispItems) {
+          const remaining = item.qty_requested - item.qty_dispatched;
+          if (remaining > 0) initialQty[item.id] = Math.min(remaining, item.stock_available);
+        }
+
         setOrderModal({
           open: true,
           order: orderData.data,
