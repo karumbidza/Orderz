@@ -218,3 +218,58 @@ export const OrderFilterSchema = z.object({
   from_date: z.string().datetime().optional(),
   to_date: z.string().datetime().optional(),
 });
+
+// ─────────────────────────────────────────────
+// ORDERS EXPORT FILTERS (GET /api/admin/orders/export)
+// Mirrors the Orders tab filter UI (multi-select status + category,
+// site-name substring search, date range, amount range).
+// ─────────────────────────────────────────────
+const ExportStatusSchema = z.enum([
+  'PENDING',
+  'PARTIAL_DISPATCH',
+  'DISPATCHED',
+  'RECEIVED',
+  'DECLINED',
+]);
+
+const IsoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+  .refine((s) => !Number.isNaN(Date.parse(s)), 'Invalid calendar date');
+
+export const OrderExportFiltersSchema = z
+  .object({
+    status: z.array(ExportStatusSchema).optional(),
+    category: z.array(z.string().min(1).max(50)).optional(),
+    site_search: z.string().max(100).optional(),
+    from: IsoDateSchema.optional(),
+    to: IsoDateSchema.optional(),
+    amount_min: z.coerce.number().min(0).optional(),
+    amount_max: z.coerce.number().min(0).optional(),
+    pending_only: z
+      .union([z.boolean(), z.enum(['true', 'false'])])
+      .default(true)
+      .transform((v) => (v === true || v === 'true')),
+  })
+  .superRefine((f, ctx) => {
+    if (f.from && f.to && f.from > f.to) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['to'],
+        message: '`to` must be on or after `from`',
+      });
+    }
+    if (
+      f.amount_min !== undefined &&
+      f.amount_max !== undefined &&
+      f.amount_min > f.amount_max
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['amount_max'],
+        message: '`amount_max` must be on or after `amount_min`',
+      });
+    }
+  });
+
+export type OrderExportFilters = z.infer<typeof OrderExportFiltersSchema>;
