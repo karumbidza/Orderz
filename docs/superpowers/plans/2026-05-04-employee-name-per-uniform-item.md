@@ -30,12 +30,63 @@
 
 ## Task 0: Prerequisites — confirm actual workbook column layout
 
-**Purpose:** The macro in `SiteOrderForm_V2.bas` assumes Item=B, SKU=C, Qty=D, Unit=E, Cost=F, Total=G, Employee=H. Allen's screenshot shows the live workbook has a different layout (first column is QNTY, not Item). Before any code change, we must read the *actual* header row from the `.xlsm` file so we know which letter to point `COL_EMPLOYEE` at.
+**Purpose:** The macro in `SiteOrderForm_V2.bas` assumes Item=B, SKU=C, Qty=D, Unit=E, Cost=F, Total=G, Employee=H. Allen's screenshot showed the live workbook has a different layout. Before any code change, we read the *actual* header row from the `.xlsm` file.
 
-This is a coordination step. The implementer cannot proceed past Task 5 without it.
+**Status: COMPLETED 2026-05-04** by extracting `Redan Order Voucher V2.0 - Update.xlsm` (placed in repo root, not committed).
+
+### Findings
+
+The `R.Voucher` sheet (rId1 → sheet1.xml) has these layouts:
+
+**Header cells (key fields):**
+| Field | V2.bas constant | Live workbook actual |
+|---|---|---|
+| Voucher # | E4 | C3 |
+| Date | E5 | C4 |
+| Category | E6 | **C5** |
+| Site Name | E9 | **C8** |
+| Address | E10 | C10 |
+| Town | G10 | C11 |
+| T.M (email) | E12 | C12 |
+| Phone | G12 | C13 |
+| Manager | (none) | C14 |
+
+**Items table (header at row 17, data rows 18–37):**
+| Col | V2.bas constant | Live workbook actual |
+|---|---|---|
+| A | (none) | row number (1–20) |
+| B | COL_ITEM | **QNTY** |
+| C | COL_SKU | **ITEM** |
+| D | COL_QTY | **SKU** |
+| E | COL_UNIT | Unit of Measure ✓ |
+| F | COL_COST | UNIT COST ✓ |
+| G | COL_TOTAL | TOTAL ✓ |
+| H | COL_EMPLOYEE | **(empty — available)** |
+
+**Row offsets:**
+| | V2.bas constant | Live workbook actual |
+|---|---|---|
+| ORDER_START_ROW | 17 | **18** (header is at 17) |
+| ORDER_END_ROW | 36 | **37** |
+
+### Implication — broader scope than the spec anticipated
+
+The live workbook is significantly out of sync with `SiteOrderForm_V2.bas` — many constants (not just `COL_EMPLOYEE`) point at the wrong cells. This means `Worksheet_Change` listens for E6 / E9 (the V2 expectations) but the actual category and site cells are C5 / C8. So the macro in the repo cannot work as-shipped against this workbook.
+
+**However:** the user reports orders *do* get submitted today, which strongly suggests the running VBA inside `vbaProject.bin` is *different* from what's in the repo `.bas`. The repo `.bas` may be aspirational / wishlist code for a layout that was later abandoned.
+
+**Decision (in-scope):** for this feature, we make only the minimal changes needed for the EMPLOYEE column to work — add a header at H17 in the workbook, ensure show/hide on category change, and validate non-empty on submit. We do NOT attempt to reconcile the broader VBA/workbook drift; that's a separate effort the user should be made aware of.
+
+**Decision (chosen `COL_EMPLOYEE` letter):** `H` — already empty in the workbook, sits cleanly to the right of TOTAL, and matches the existing V2.bas constant so the diff stays minimal.
+
+**Decision (chosen header row / start row for VBA):** in this scope we update `COL_EMPLOYEE`-related code only. We do not touch ORDER_START_ROW because changing it would shift all downstream validation/JSON-build references and we have no way to test the result without running VBA. The user should re-test in Excel.
+
+### Recommendation for Allen (out-of-scope follow-up)
+
+Open a separate ticket: "Reconcile SiteOrderForm_V2.bas with the live workbook layout." The current `.bas` is broadly out of sync and any future macro re-import will break the workbook. Either: (a) align `.bas` to the live workbook (CELL_CATEGORY, CELL_SITE_NAME, COL_QTY, COL_ITEM, COL_SKU, ORDER_START_ROW, ORDER_END_ROW, plus OrderFormSheet_Code.txt event triggers), or (b) re-run FirstTimeSetup to regenerate the workbook from `.bas` (loses branding).
 
 **Files:**
-- Read: `Redan Order Voucher V2.0.xlsm` (Allen's local file, not in repo)
+- Read: `Redan Order Voucher V2.0 - Update.xlsm` (in repo root, untracked)
 
 - [ ] **Step 1: Ask Allen to send the live `.xlsm` file** (or have him open it and report cell-by-cell what's in row 17, columns A through J)
 
