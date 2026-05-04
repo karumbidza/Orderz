@@ -400,7 +400,7 @@ expects. Sheet name: `R.Voucher`. Header row: 17. Data rows: 18–37.
 The `SiteOrderForm_V2.bas` constants (`COL_ITEM=B`, `COL_SKU=C`, `COL_QTY=D`)
 do not match this layout. The running VBA inside the workbook's `vbaProject.bin`
 must therefore differ from the repo's `.bas`. Reconciling that drift is a
-separate project — see GitHub issues / ask Allen.
+separate project — ask Allen.
 
 ## Manual setup: enabling EMPLOYEE NAME for uniform orders
 
@@ -416,11 +416,16 @@ each line of a Uniforms order. To make the form actually capture it:
 5. Right-click column H header → Hide. (The macro will unhide it when
    Category = Uniforms.)
 6. Bind a `Worksheet_Change` handler so changing the Category cell
-   (currently C5 in the live workbook) toggles column H visibility.
+   (currently `C5` in the live workbook) toggles column H visibility.
    The repo's `OrderFormSheet_Code.txt` listens for `$E$6`, but the live
    workbook puts category in `$C$5` — until the broader reconciliation
-   happens, column H will need to be unhidden manually for uniform
-   orders, or a one-line addition to your sheet's `Worksheet_Change`:
+   happens, you have two options:
+
+   **Option A — graft into your existing handler.** If the sheet already
+   has a `Private Sub Worksheet_Change` (open `R.Voucher` in the VBA
+   editor → check `Microsoft Excel Objects`), paste this block inside,
+   AFTER any existing `Application.EnableEvents = False` line and
+   AFTER any `If Target.Cells.Count > 1 Then Exit Sub` early-return:
 
    ```vba
    If Not Intersect(Target, Me.Range("C5")) Is Nothing Then
@@ -431,6 +436,39 @@ each line of a Uniforms order. To make the form actually capture it:
        End If
    End If
    ```
+
+   **Option B — fresh handler (only if R.Voucher has no existing
+   `Worksheet_Change`).** Paste this complete sub:
+
+   ```vba
+   Private Sub Worksheet_Change(ByVal Target As Range)
+       On Error GoTo CleanExit
+       If Target.Cells.Count > 1 Then Exit Sub
+       Application.EnableEvents = False
+
+       If Not Intersect(Target, Me.Range("C5")) Is Nothing Then
+           If LCase(Trim(CStr(Me.Range("C5").Value))) = "uniforms" Then
+               Me.Columns("H").Hidden = False
+           Else
+               Me.Columns("H").Hidden = True
+           End If
+       End If
+
+   CleanExit:
+       Application.EnableEvents = True
+   End Sub
+   ```
+
+   **Note:** column H stays hidden until `C5` changes. If you open the
+   workbook with `C5` already set to `Uniforms`, re-type the value (or
+   unhide column H manually) to make the column visible.
+
+   **Note:** the data tint (step 4) covers rows H18:H37 for visual
+   consistency with the live items table. The repo's
+   `SiteOrderForm_V2.bas` currently iterates rows 17–36 only
+   (`ORDER_END_ROW = 36`); row 37 is not validated by the repo macro,
+   though the live `vbaProject.bin` may differ. Reconciliation is part
+   of the broader VBA audit.
 
 7. Save the workbook.
 
