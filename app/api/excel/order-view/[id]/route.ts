@@ -19,6 +19,12 @@ export async function GET(
       return new NextResponse('Order not found', { status: 404 });
     }
 
+    // ORDERZ-XSS — escape free-text DB values before HTML interpolation
+    const esc = (s: unknown): string =>
+      String(s ?? '').replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)
+      );
+
     const [orders, items] = await Promise.all([
       sql`
         SELECT
@@ -54,6 +60,7 @@ export async function GET(
           oi.sku,
           oi.item_name,
           oi.size,
+          oi.employee_name,
           oi.qty_requested,
           oi.qty_approved,
           oi.qty_dispatched,
@@ -128,7 +135,10 @@ export async function GET(
 
       return `
       <tr style="${rowBg}">
-        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;font-weight:500">${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(0,0,0,0.4);font-size:11px">${item.size}</span>` : ''}</td>
+        <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;font-weight:500">
+          ${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(0,0,0,0.4);font-size:11px">${item.size}</span>` : ''}
+          ${item.employee_name ? `<div style="font-size:11px;color:rgba(0,0,0,0.55);font-weight:400;margin-top:2px">For: ${esc(item.employee_name)}</div>` : ''}
+        </td>
         <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:12px;color:rgba(0,0,0,0.45);font-family:monospace">${item.sku ?? '&mdash;'}</td>
         <td style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:13px;text-align:center">${ordered}</td>
         ${dispatchedCell}
