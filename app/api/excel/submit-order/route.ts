@@ -3,30 +3,10 @@ import { sql } from '@/lib/db';
 import { z } from 'zod';
 import { validateExcelApiKey } from '@/lib/excel-auth';
 import { isRateLimited } from '@/lib/rate-limit';
+import { OrderSubmitSchema } from '@/lib/validations';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-// ORDERZ-SEC: Validation schema for order submission from Excel
-const OrderItemSchema = z.object({
-  item_id:   z.number().int().positive(),
-  sku:       z.string().min(1).max(50).trim(),
-  item_name: z.string().min(1).max(200).trim(),
-  size:      z.string().max(100).trim().optional().nullable(),
-  quantity:  z.number().int().positive().max(10_000),
-  unit_cost: z.number().min(0).max(100_000),
-  line_total:z.number().min(0).max(10_000_000),
-});
-
-const OrderSubmitSchema = z.object({
-  site_id:      z.number().int().positive(),
-  site_name:    z.string().min(1).max(100).trim(),
-  category:     z.string().min(1).max(100).trim(),
-  requested_by: z.string().max(100).trim().optional(),
-  notes:        z.string().max(500).trim().optional(),
-  total_amount: z.number().min(0).max(1_000_000),
-  items: z.array(OrderItemSchema).min(1, 'At least one item is required').max(50),
-});
 
 // ─────────────────────────────────────────────
 // Helper: Generate voucher number atomically
@@ -100,8 +80,10 @@ export async function POST(request: NextRequest) {
     
     const orderId = orderResult[0].id;
     
-    // Insert order items
+    // Insert order items — only persist employee_name for Uniforms; null for everything else.
     for (const item of validated.items) {
+      const persistedEmployeeName =
+        validated.category === 'Uniforms' ? (item.employee_name?.trim() || null) : null;
       await sql`
         INSERT INTO order_items (
           order_id,
@@ -111,7 +93,8 @@ export async function POST(request: NextRequest) {
           size,
           qty_requested,
           unit_cost,
-          line_total
+          line_total,
+          employee_name
         ) VALUES (
           ${orderId},
           ${item.item_id},
@@ -120,7 +103,8 @@ export async function POST(request: NextRequest) {
           ${item.size || null},
           ${item.quantity},
           ${item.unit_cost},
-          ${item.line_total}
+          ${item.line_total},
+          ${persistedEmployeeName}
         )
       `;
     }

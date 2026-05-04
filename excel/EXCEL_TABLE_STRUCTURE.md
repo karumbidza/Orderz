@@ -1,6 +1,11 @@
 # REDAN ORDER FORM - EXCEL TABLE STRUCTURE
 ## Phase-by-Phase Update Guide
 
+> **NOTE:** The "Phase 1" through "Phase 6" sections below describe the
+> original V2 design. The live workbook in production diverges from this
+> layout — see "Live workbook layout (verified 2026-05-04)" near the end
+> of this file for the actual structure.
+
 ---
 
 ## 📊 PHASE 1: HEADER SECTION (Copy this to your Excel)
@@ -377,4 +382,103 @@ H17:H36 (if Uniforms): "Employee name is required for uniform items"
 7. **Import VBA** - Alt+F11 → File → Import → SiteOrderForm_V2.bas
 8. **Run FirstTimeSetup** - Alt+F8 → FirstTimeSetup → Run
 9. **Test** - Select category, site, add items, click Submit
+
+---
+
+## Live workbook layout (verified 2026-05-04)
+
+The actual `Redan Order Voucher V2.0 - Update.xlsm` shipped to sites
+has its items table laid out differently from what `SiteOrderForm_V2.bas`
+expects. Sheet name: `R.Voucher`. Header row: 17. Data rows: 18–37.
+
+| Column | Header | Notes |
+|---|---|---|
+| A | (row #) | 1–20, decorative |
+| B | QNTY | Quantity |
+| C | ITEM | Product name (dropdown) |
+| D | SKU | Auto-fill |
+| E | Unit of Measure | Auto-fill |
+| F | UNIT COST | Auto-fill |
+| G | TOTAL | Formula |
+| H | (empty) | **Reserved for EMPLOYEE NAME — see Manual Setup below** |
+
+The `SiteOrderForm_V2.bas` constants (`COL_ITEM=B`, `COL_SKU=C`, `COL_QTY=D`)
+do not match this layout. The running VBA inside the workbook's `vbaProject.bin`
+must therefore differ from the repo's `.bas`. Reconciling that drift is a
+separate project — ask Allen.
+
+## Manual setup: enabling EMPLOYEE NAME for uniform orders
+
+The repo's `.bas` and API server now expect an `employee_name` field on
+each line of a Uniforms order. To make the form actually capture it:
+
+1. Open `Redan Order Voucher V2.0 - Update.xlsm`.
+2. Cell **H17**: type `EMPLOYEE NAME`. Format: bold, centred, same font as
+   adjacent headers (`QNTY`, `ITEM`, etc.).
+3. Select column **H**: right-click → Column Width → 20.
+4. Select cells **H18:H37**: Format → Fill → custom RGB(255, 255, 230)
+   (light yellow tint).
+5. Right-click column H header → Hide. (The macro will unhide it when
+   Category = Uniforms.)
+6. Bind a `Worksheet_Change` handler so changing the Category cell
+   (currently `C5` in the live workbook) toggles column H visibility.
+   The repo's `OrderFormSheet_Code.txt` listens for `$E$6`, but the live
+   workbook puts category in `$C$5` — until the broader reconciliation
+   happens, you have two options:
+
+   **Option A — graft into your existing handler.** If the sheet already
+   has a `Private Sub Worksheet_Change` (open `R.Voucher` in the VBA
+   editor → check `Microsoft Excel Objects`), paste this block inside,
+   AFTER any existing `Application.EnableEvents = False` line and
+   AFTER any `If Target.Cells.Count > 1 Then Exit Sub` early-return:
+
+   ```vba
+   If Not Intersect(Target, Me.Range("C5")) Is Nothing Then
+       If LCase(Trim(CStr(Me.Range("C5").Value))) = "uniforms" Then
+           Me.Columns("H").Hidden = False
+       Else
+           Me.Columns("H").Hidden = True
+       End If
+   End If
+   ```
+
+   **Option B — fresh handler (only if R.Voucher has no existing
+   `Worksheet_Change`).** Paste this complete sub:
+
+   ```vba
+   Private Sub Worksheet_Change(ByVal Target As Range)
+       On Error GoTo CleanExit
+       If Target.Cells.Count > 1 Then Exit Sub
+       Application.EnableEvents = False
+
+       If Not Intersect(Target, Me.Range("C5")) Is Nothing Then
+           If LCase(Trim(CStr(Me.Range("C5").Value))) = "uniforms" Then
+               Me.Columns("H").Hidden = False
+           Else
+               Me.Columns("H").Hidden = True
+           End If
+       End If
+
+   CleanExit:
+       Application.EnableEvents = True
+   End Sub
+   ```
+
+   **Note:** column H stays hidden until `C5` changes. If you open the
+   workbook with `C5` already set to `Uniforms`, re-type the value (or
+   unhide column H manually) to make the column visible.
+
+   **Note:** the data tint (step 4) covers rows H18:H37 for visual
+   consistency with the live items table. The repo's
+   `SiteOrderForm_V2.bas` currently iterates rows 17–36 only
+   (`ORDER_END_ROW = 36`); row 37 is not validated by the repo macro,
+   though the live `vbaProject.bin` may differ. Reconciliation is part
+   of the broader VBA audit.
+
+7. Save the workbook.
+
+After this setup, the per-row Employee Name cell will collect free-text
+names. The Excel macro validates non-empty before submission; the API
+re-validates server-side and rejects with HTTP 400 if any uniform line
+is missing a name.
 

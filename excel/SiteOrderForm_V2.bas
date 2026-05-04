@@ -595,10 +595,10 @@ Public Sub UpdateItemDropdowns()
     Next j
     
     ' Show/hide employee column based on category
-    If category = "Uniforms" Then
-        orderWs.Columns("H").Hidden = False
+    If Trim(category) = "Uniforms" Then
+        orderWs.Columns(COL_EMPLOYEE).Hidden = False
     Else
-        orderWs.Columns("H").Hidden = True
+        orderWs.Columns(COL_EMPLOYEE).Hidden = True
     End If
 End Sub
 
@@ -829,11 +829,11 @@ Private Sub CreateOrderFormLayout()
     ws.Columns("E").ColumnWidth = 12
     ws.Columns("F").ColumnWidth = 10
     ws.Columns("G").ColumnWidth = 12
-    ws.Columns("H").ColumnWidth = 20
+    ws.Columns(COL_EMPLOYEE).ColumnWidth = 20
     ws.Columns("I").ColumnWidth = 18
     
     ' Hide employee column initially
-    ws.Columns("H").Hidden = True
+    ws.Columns(COL_EMPLOYEE).Hidden = True
     
     ' Freeze panes
     ws.Range("B17").Select
@@ -997,21 +997,29 @@ Public Sub SubmitOrder()
         
         If itemName <> "" And IsNumeric(qty) And qty > 0 Then
             ' Validate employee for uniforms
-            If category = "Uniforms" And Trim(employeeName) = "" Then
-                MsgBox "Row " & (i - ORDER_START_ROW + 1) & ": Uniform items require an EMPLOYEE NAME in column H.", _
+            If Trim(category) = "Uniforms" And Trim(employeeName) = "" Then
+                MsgBox "Row " & (i - ORDER_START_ROW + 1) & ": Uniform items require an EMPLOYEE NAME in column " & COL_EMPLOYEE & ".", _
                        vbExclamation, "Missing Employee"
                 ws.Range(COL_EMPLOYEE & i).Select
                 Exit Sub
             End If
             
             If hasItems Then orderItems = orderItems & ","
-            
-            orderItems = orderItems & "{" & _
-                """sku"":""" & EscapeJSON(sku) & """," & _
-                """quantity"":" & CStr(CLng(qty)) & "," & _
-                """employee_name"":""" & EscapeJSON(employeeName) & """" & _
-                "}"
-            
+
+            ' Only emit employee_name for Uniforms orders
+            If Trim(category) = "Uniforms" Then
+                orderItems = orderItems & "{" & _
+                    """sku"":""" & EscapeJSON(sku) & """," & _
+                    """quantity"":" & CStr(CLng(qty)) & "," & _
+                    """employee_name"":""" & EscapeJSON(employeeName) & """" & _
+                    "}"
+            Else
+                orderItems = orderItems & "{" & _
+                    """sku"":""" & EscapeJSON(sku) & """," & _
+                    """quantity"":" & CStr(CLng(qty)) & _
+                    "}"
+            End If
+
             hasItems = True
         End If
     Next i

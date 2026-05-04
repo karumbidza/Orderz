@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:validation": "tsx scripts/test-employee-name-validation.ts",
     "db:seed": "npx tsx scripts/seed.ts",
     "db:migrate": "npx tsx scripts/migrate.ts"
   },
