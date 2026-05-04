@@ -106,11 +106,46 @@ export const OrderItemCreateSchema = z.object({
   item_id: z.number().int().positive(),
   quantity_ordered: z.number().int().positive(),
   notes: z.string().max(500).nullable().optional(),
+  employee_name: z.string().max(255).nullable().optional(),
 });
 
 export const OrderItemBatchSchema = z.object({
   order_id: z.number().int().positive(),
   items: z.array(OrderItemCreateSchema).min(1),
+});
+
+// ─────────────────────────────────────────────
+// EXCEL ORDER PAYLOAD (POST /api/excel/orders)
+// Mirrors the JSON shape that SiteOrderForm_V2.bas builds.
+// Items reference SKU + quantity, not item_id.
+// ─────────────────────────────────────────────
+const ExcelOrderItemSchema = z.object({
+  sku: z.string().min(1).max(50),
+  quantity: z.number().int().positive(),
+  size: z.string().max(50).nullable().optional(),
+  employee_name: z.string().max(255).nullable().optional(),
+});
+
+export const ExcelOrderSchema = z.object({
+  voucher_number: z.string().max(50).nullable().optional(),
+  site_code: z.string().min(1).max(50),
+  category: z.string().max(50).nullable().optional(),
+  ordered_by: z.string().max(255).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+  items: z.array(ExcelOrderItemSchema).min(1),
+}).superRefine((order, ctx) => {
+  if (order.category === 'Uniforms') {
+    order.items.forEach((it, idx) => {
+      const name = (it.employee_name ?? '').trim();
+      if (name.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['items', idx, 'employee_name'],
+          message: `Item ${it.sku}: employee name is required for uniform orders.`,
+        });
+      }
+    });
+  }
 });
 
 // ─────────────────────────────────────────────
