@@ -20,6 +20,12 @@ export async function GET(
       return new NextResponse('Not found', { status: 404 });
     }
 
+    // ORDERZ-XSS — escape free-text DB values before HTML interpolation
+    const esc = (s: unknown): string =>
+      String(s ?? '').replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)
+      );
+
     const [orders, items] = await Promise.all([
       sql`
         SELECT
@@ -98,7 +104,7 @@ export async function GET(
       <tr${rowStyle}>
         <td>
           ${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(0,0,0,0.45);font-size:10px">${item.size}</span>` : ''}
-          ${item.employee_name ? `<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-top:2px">For: ${String(item.employee_name)}</div>` : ''}
+          ${item.employee_name ? `<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-top:2px">For: ${esc(item.employee_name)}</div>` : ''}
         </td>
         <td style="font-family:monospace;font-size:11px">${item.sku ?? '&mdash;'}</td>
         <td style="text-align:center">${ordered}</td>
