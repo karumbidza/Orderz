@@ -97,14 +97,18 @@ Slugify by lowercasing and replacing spaces with hyphens.
 
 | Param | Type | Default | Notes |
 |---|---|---|---|
-| `status` | enum: `PENDING` \| `PARTIAL_DISPATCH` \| `DISPATCHED` \| `RECEIVED` \| `DECLINED` | none | order-level status |
-| `category` | string (max 50) | none | exact match on `orders.category` |
-| `site_id` | int positive | none | exact match on `orders.site_id` |
+| `status` | repeated string (array) | none | one or more of `PENDING`, `PARTIAL_DISPATCH`, `DISPATCHED`, `RECEIVED`, `DECLINED`. Sent as repeated `?status=PENDING&status=PARTIAL_DISPATCH`. SQL: `status IN (...)`. |
+| `category` | repeated string (array) | none | one or more category names. Same repeated-param shape. SQL: `category IN (...)`. |
+| `site_search` | string (max 100) | none | case-insensitive substring match on `sites.name`. SQL: `LOWER(s.name) LIKE LOWER('%' || $param || '%')`. |
 | `from` | YYYY-MM-DD | none | inclusive lower bound on `orders.order_date` |
 | `to` | YYYY-MM-DD | none | inclusive upper bound on `orders.order_date` |
+| `amount_min` | number | none | inclusive lower bound on `orders.total_amount` |
+| `amount_max` | number | none | inclusive upper bound on `orders.total_amount` |
 | `pending_only` | boolean | `true` | when true, only include line items where `qty_requested - COALESCE(qty_dispatched, 0) > 0` |
 
-UI default values: `status=PENDING&pending_only=true` (the supplier-fulfillment workflow). User can clear/change before clicking download.
+UI default values when the user clicks Download: `pending_only=true`, plus whatever filters are active in the Orders tab (multi-status, multi-category, site search, date range, amount range). The export endpoint accepts the same filter shape the existing `loadOrders()` UI applies client-side, so the file matches the visible table.
+
+**Reconciliation amendment (post-spec):** original spec assumed single-value `status`, `category`, and `site_id`. The actual Orders tab UI has multi-select for status and category (state vars `orderStatuses: string[]`, `orderCategories: string[]`) and a site-name search box (`orderSiteSearch: string`). Updated above to match. Also added `amount_min` / `amount_max` to mirror the existing UI's amount filter.
 
 **Successful response:**
 
