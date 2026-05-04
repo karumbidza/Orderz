@@ -682,6 +682,51 @@ export default function AdminPage() {
     }
   };
 
+  // ORDERZ-EXPORT — download filtered orders as .xlsx
+  const downloadOrdersExport = async () => {
+    const qs = new URLSearchParams();
+    for (const s of orderStatuses) qs.append('status', s);
+    for (const c of orderCategories) qs.append('category', c);
+    if (orderSiteSearch.trim()) qs.set('site_search', orderSiteSearch.trim());
+    if (orderDateFrom) qs.set('from', orderDateFrom);
+    if (orderDateTo) qs.set('to', orderDateTo);
+    if (orderAmountMin) qs.set('amount_min', orderAmountMin);
+    if (orderAmountMax) qs.set('amount_max', orderAmountMax);
+    qs.set('pending_only', 'true');
+
+    try {
+      const res = await fetch(`/api/admin/orders/export?${qs.toString()}`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        let msg = 'Export failed.';
+        try {
+          const body = await res.json();
+          if (body?.error) msg = String(body.error);
+        } catch { /* non-JSON body */ }
+        showMessage(msg, 'error');
+        return;
+      }
+
+      const cd = res.headers.get('content-disposition') ?? '';
+      const m = /filename="([^"]+)"/.exec(cd);
+      const filename = m ? m[1] : `redan-orders-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error('[export] failed', err);
+      showMessage('Export failed (network error).', 'error');
+    }
+  };
+
   const openDispatchModal = async (orderId: number) => {
     setDispatchModal({ open: true, loading: true, orderId, dispatchInfo: null, confirming: false, customQty: {} });
     try {
@@ -1780,6 +1825,23 @@ export default function AdminPage() {
                     <option value="site-asc">Site — A to Z</option>
                     <option value="items-desc">Items — most first</option>
                   </select>
+                  <button
+                    onClick={downloadOrdersExport}
+                    title="Download the currently-filtered orders as an .xlsx workbook"
+                    style={{
+                      border: '0.5px solid rgba(0,0,0,0.12)',
+                      borderRadius: 7,
+                      padding: '4px 10px',
+                      fontSize: 12,
+                      fontFamily: 'inherit',
+                      background: '#0a0a0a',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      outline: 'none',
+                    }}
+                  >
+                    ↓ Download .xlsx
+                  </button>
                   <div style={{ flex: 1 }} />
                   <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)' }}>{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''}{filteredOrders.length !== orders.length ? ` (filtered from ${orders.length})` : ''}</span>
                 </div>
