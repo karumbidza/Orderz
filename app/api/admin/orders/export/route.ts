@@ -73,8 +73,8 @@ export async function GET(request: NextRequest) {
         (${statusArr}::text[]   IS NULL OR o.status   = ANY(${statusArr}::text[]))
         AND (${categoryArr}::text[] IS NULL OR o.category = ANY(${categoryArr}::text[]))
         AND (${siteSearch}::text   IS NULL OR LOWER(s.name) LIKE ${siteSearch})
-        AND (${fromDate}::date     IS NULL OR o.order_date >= ${fromDate}::date)
-        AND (${toDate}::date       IS NULL OR o.order_date <= ${toDate}::date)
+        AND (${fromDate}::date     IS NULL OR o.order_date::date >= ${fromDate}::date)
+        AND (${toDate}::date       IS NULL OR o.order_date::date <= ${toDate}::date)
         AND (${amountMin}::numeric IS NULL OR o.total_amount >= ${amountMin})
         AND (${amountMax}::numeric IS NULL OR o.total_amount <= ${amountMax})
         AND (${pendingOnly}::boolean = false
