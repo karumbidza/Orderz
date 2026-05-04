@@ -1,7 +1,7 @@
-// Ad-hoc Zod check for OrderItemCreateSchema with employee_name.
+// Ad-hoc Zod check for the order-related schemas with employee_name.
 // Run: npx tsx scripts/test-employee-name-validation.ts
 
-import { OrderItemCreateSchema, ExcelOrderSchema } from '../lib/validations';
+import { OrderItemCreateSchema, ExcelOrderSchema, OrderSubmitSchema } from '../lib/validations';
 
 let failures = 0;
 
@@ -59,6 +59,57 @@ function check(label: string, condition: boolean) {
     ],
   });
   check('ExcelOrderSchema rejects Uniforms order where one item has whitespace-only employee_name', !r.success);
+}
+
+// OrderSubmitSchema (the live workbook's actual endpoint, /api/excel/submit-order)
+const baseItem = {
+  item_id: 1,
+  sku: 'UNI-001',
+  item_name: 'Boots',
+  quantity: 1,
+  unit_cost: 10,
+  line_total: 10,
+};
+const baseOrder = {
+  site_id: 1,
+  site_name: 'Test Site',
+  requested_by: 'tester',
+  total_amount: 10,
+};
+{
+  const r = OrderSubmitSchema.safeParse({
+    ...baseOrder,
+    category: 'Uniforms',
+    items: [baseItem],
+  });
+  check('OrderSubmitSchema rejects Uniforms order with missing employee_name', !r.success);
+}
+{
+  const r = OrderSubmitSchema.safeParse({
+    ...baseOrder,
+    category: 'Uniforms',
+    items: [{ ...baseItem, employee_name: 'Jane Doe' }],
+  });
+  check('OrderSubmitSchema accepts Uniforms order with employee_name', r.success);
+}
+{
+  const r = OrderSubmitSchema.safeParse({
+    ...baseOrder,
+    category: 'PPE',
+    items: [baseItem],
+  });
+  check('OrderSubmitSchema accepts non-Uniforms order without employee_name', r.success);
+}
+{
+  const r = OrderSubmitSchema.safeParse({
+    ...baseOrder,
+    category: 'Uniforms',
+    items: [
+      { ...baseItem, employee_name: 'Jane Doe' },
+      { ...baseItem, sku: 'UNI-002', employee_name: '   ' },
+    ],
+  });
+  check('OrderSubmitSchema rejects Uniforms order where one item has whitespace-only employee_name', !r.success);
 }
 
 if (failures > 0) {
