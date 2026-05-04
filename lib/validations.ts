@@ -102,6 +102,8 @@ export const OrderUpdateSchema = z.object({
 // ─────────────────────────────────────────────
 // ORDER ITEMS
 // ─────────────────────────────────────────────
+// Note: `employee_name` here is dormant — only ExcelOrderSchema.superRefine
+// (below) enforces presence. See plan 2026-05-04 Task 1b.
 export const OrderItemCreateSchema = z.object({
   item_id: z.number().int().positive(),
   quantity_ordered: z.number().int().positive(),
@@ -134,7 +136,7 @@ export const ExcelOrderSchema = z.object({
   notes: z.string().max(1000).nullable().optional(),
   items: z.array(ExcelOrderItemSchema).min(1),
 }).superRefine((order, ctx) => {
-  if (order.category === 'Uniforms') {
+  if ((order.category ?? '').trim() === 'Uniforms') {
     order.items.forEach((it, idx) => {
       const name = (it.employee_name ?? '').trim();
       if (name.length === 0) {

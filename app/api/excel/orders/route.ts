@@ -196,14 +196,15 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const { 
-      voucher_number, 
-      site_code, 
-      category, 
-      ordered_by, 
+    const {
+      voucher_number,
+      site_code,
+      category,
+      ordered_by,
       notes,
-      items 
+      items
     } = body;
+    const categoryNorm = typeof category === 'string' ? category.trim() : '';
 
     // Validate required fields
     if (!site_code) {
@@ -214,7 +215,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ORDERZ-UNIFORM-NAME — require employee_name on every line for Uniforms orders
-    if (category === 'Uniforms') {
+    if (categoryNorm === 'Uniforms') {
       for (const item of items) {
         const name = typeof item?.employee_name === 'string' ? item.employee_name.trim() : '';
         if (name.length === 0) {
@@ -307,7 +308,7 @@ export async function POST(request: NextRequest) {
       const lineTotal = unitCost * quantity;
 
       // Only persist employee_name for Uniforms; null for everything else.
-      const persistedEmployeeName = category === 'Uniforms' ? (employee_name ?? null) : null;
+      const persistedEmployeeName = categoryNorm === 'Uniforms' ? (employee_name ?? null) : null;
 
       // Insert order item with correct column names
       const orderItemResult = await sql`
