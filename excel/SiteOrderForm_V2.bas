@@ -595,10 +595,10 @@ Public Sub UpdateItemDropdowns()
     Next j
     
     ' Show/hide employee column based on category
-    If category = "Uniforms" Then
-        orderWs.Columns("H").Hidden = False
+    If Trim(category) = "Uniforms" Then
+        orderWs.Columns(COL_EMPLOYEE).Hidden = False
     Else
-        orderWs.Columns("H").Hidden = True
+        orderWs.Columns(COL_EMPLOYEE).Hidden = True
     End If
 End Sub
 
@@ -829,11 +829,11 @@ Private Sub CreateOrderFormLayout()
     ws.Columns("E").ColumnWidth = 12
     ws.Columns("F").ColumnWidth = 10
     ws.Columns("G").ColumnWidth = 12
-    ws.Columns("H").ColumnWidth = 20
+    ws.Columns(COL_EMPLOYEE).ColumnWidth = 20
     ws.Columns("I").ColumnWidth = 18
     
     ' Hide employee column initially
-    ws.Columns("H").Hidden = True
+    ws.Columns(COL_EMPLOYEE).Hidden = True
     
     ' Freeze panes
     ws.Range("B17").Select
