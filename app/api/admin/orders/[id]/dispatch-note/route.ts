@@ -50,6 +50,7 @@ export async function GET(
           oi.sku,
           oi.item_name,
           oi.size,
+          oi.employee_name,
           oi.qty_requested,
           oi.qty_approved,
           oi.qty_dispatched,
@@ -95,7 +96,10 @@ export async function GET(
       const rowStyle   = pending > 0 ? ' style="background:#fffbeb"' : '';
       return `
       <tr${rowStyle}>
-        <td>${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(255,255,255,0.55);font-size:10px">${item.size}</span>` : ''}</td>
+        <td>
+          ${item.item_name ?? '&mdash;'}${item.size ? ` <span style="color:rgba(0,0,0,0.45);font-size:10px">${item.size}</span>` : ''}
+          ${item.employee_name ? `<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-top:2px">For: ${String(item.employee_name)}</div>` : ''}
+        </td>
         <td style="font-family:monospace;font-size:11px">${item.sku ?? '&mdash;'}</td>
         <td style="text-align:center">${ordered}</td>
         <td style="text-align:center;color:${dispatched > 0 ? '#065f46' : 'rgba(0,0,0,0.3)'};font-weight:${dispatched > 0 ? 600 : 400}">${dispatched > 0 ? '&#10003; ' + dispatched : '&mdash;'}</td>
