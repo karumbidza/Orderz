@@ -692,6 +692,9 @@ export default function AdminPage() {
     if (orderDateTo) qs.set('to', orderDateTo);
     if (orderAmountMin) qs.set('amount_min', orderAmountMin);
     if (orderAmountMax) qs.set('amount_max', orderAmountMax);
+    // Hardcoded: this export is the supplier-fulfillment list, scoped to
+    // line items still owed (qty_pending > 0). Pre-filtered by whatever
+    // status/category/site filters are active in the Orders tab.
     qs.set('pending_only', 'true');
 
     try {
@@ -1827,7 +1830,7 @@ export default function AdminPage() {
                   </select>
                   <button
                     onClick={downloadOrdersExport}
-                    title="Download the currently-filtered orders as an .xlsx workbook"
+                    title="Download pending fulfillment list (current filters applied; only line items still owed)"
                     style={{
                       border: '0.5px solid rgba(0,0,0,0.12)',
                       borderRadius: 7,
