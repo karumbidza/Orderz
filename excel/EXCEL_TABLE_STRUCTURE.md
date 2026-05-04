@@ -1,6 +1,11 @@
 # REDAN ORDER FORM - EXCEL TABLE STRUCTURE
 ## Phase-by-Phase Update Guide
 
+> **NOTE:** The "Phase 1" through "Phase 6" sections below describe the
+> original V2 design. The live workbook in production diverges from this
+> layout — see "Live workbook layout (verified 2026-05-04)" near the end
+> of this file for the actual structure.
+
 ---
 
 ## 📊 PHASE 1: HEADER SECTION (Copy this to your Excel)
