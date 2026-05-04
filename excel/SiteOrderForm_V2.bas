@@ -998,20 +998,28 @@ Public Sub SubmitOrder()
         If itemName <> "" And IsNumeric(qty) And qty > 0 Then
             ' Validate employee for uniforms
             If category = "Uniforms" And Trim(employeeName) = "" Then
-                MsgBox "Row " & (i - ORDER_START_ROW + 1) & ": Uniform items require an EMPLOYEE NAME in column H.", _
+                MsgBox "Row " & (i - ORDER_START_ROW + 1) & ": Uniform items require an EMPLOYEE NAME in column " & COL_EMPLOYEE & ".", _
                        vbExclamation, "Missing Employee"
                 ws.Range(COL_EMPLOYEE & i).Select
                 Exit Sub
             End If
             
             If hasItems Then orderItems = orderItems & ","
-            
-            orderItems = orderItems & "{" & _
-                """sku"":""" & EscapeJSON(sku) & """," & _
-                """quantity"":" & CStr(CLng(qty)) & "," & _
-                """employee_name"":""" & EscapeJSON(employeeName) & """" & _
-                "}"
-            
+
+            ' Only emit employee_name for Uniforms orders
+            If category = "Uniforms" Then
+                orderItems = orderItems & "{" & _
+                    """sku"":""" & EscapeJSON(sku) & """," & _
+                    """quantity"":" & CStr(CLng(qty)) & "," & _
+                    """employee_name"":""" & EscapeJSON(employeeName) & """" & _
+                    "}"
+            Else
+                orderItems = orderItems & "{" & _
+                    """sku"":""" & EscapeJSON(sku) & """," & _
+                    """quantity"":" & CStr(CLng(qty)) & _
+                    "}"
+            End If
+
             hasItems = True
         End If
     Next i
