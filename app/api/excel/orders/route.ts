@@ -306,6 +306,9 @@ export async function POST(request: NextRequest) {
       const unitCost = parseFloat(dbItem.cost) || 0;
       const lineTotal = unitCost * quantity;
 
+      // Only persist employee_name for Uniforms; null for everything else.
+      const persistedEmployeeName = category === 'Uniforms' ? (employee_name ?? null) : null;
+
       // Insert order item with correct column names
       const orderItemResult = await sql`
         INSERT INTO order_items (
@@ -328,7 +331,7 @@ export async function POST(request: NextRequest) {
           ${unitCost},
           ${lineTotal},
           ${size || dbItem.size || null},
-          ${employee_name || null}
+          ${persistedEmployeeName}
         )
         RETURNING id, sku, item_name, qty_requested, unit_cost, line_total
       `;
