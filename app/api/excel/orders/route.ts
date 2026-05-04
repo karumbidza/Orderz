@@ -213,6 +213,19 @@ export async function POST(request: NextRequest) {
       return errorResponse('At least one item is required', 400);
     }
 
+    // ORDERZ-UNIFORM-NAME — require employee_name on every line for Uniforms orders
+    if (category === 'Uniforms') {
+      for (const item of items) {
+        const name = typeof item?.employee_name === 'string' ? item.employee_name.trim() : '';
+        if (name.length === 0) {
+          return errorResponse(
+            `Item ${item?.sku ?? '(unknown)'}: employee name is required for uniform orders.`,
+            400
+          );
+        }
+      }
+    }
+
     // Look up site
     const siteResult = await sql`
       SELECT id, name, city, fulfillment_zone 
