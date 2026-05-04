@@ -36,6 +36,14 @@ function check(label: string, condition: boolean) {
   check('rejects malformed from date', !r.success);
 }
 {
+  const r = OrderExportFiltersSchema.safeParse({ from: '2026-02-30' });
+  check('rejects calendar rollover (Feb 30)', !r.success);
+}
+{
+  const r = OrderExportFiltersSchema.safeParse({ from: '2025-02-29' });
+  check('rejects non-leap-year Feb 29', !r.success);
+}
+{
   const r = OrderExportFiltersSchema.safeParse({ from: '2026-05-10', to: '2026-05-01' });
   check('rejects from > to', !r.success);
 }

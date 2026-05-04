@@ -235,11 +235,15 @@ const ExportStatusSchema = z.enum([
 const IsoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
-  .refine((s) => !Number.isNaN(Date.parse(s)), 'Invalid calendar date');
+  .refine((s) => {
+    const d = new Date(`${s}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  }, 'Invalid calendar date');
 
 export const OrderExportFiltersSchema = z
   .object({
     status: z.array(ExportStatusSchema).optional(),
+    // TODO(ORDERZ-EXPORT): tighten to z.enum once category source-of-truth is centralised.
     category: z.array(z.string().min(1).max(50)).optional(),
     site_search: z.string().max(100).optional(),
     from: IsoDateSchema.optional(),
@@ -252,6 +256,7 @@ export const OrderExportFiltersSchema = z
       .transform((v) => (v === true || v === 'true')),
   })
   .superRefine((f, ctx) => {
+    // Lex compare is safe for fixed-width YYYY-MM-DD (regex enforces).
     if (f.from && f.to && f.from > f.to) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -267,7 +272,7 @@ export const OrderExportFiltersSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['amount_max'],
-        message: '`amount_max` must be on or after `amount_min`',
+        message: '`amount_max` must be greater than or equal to `amount_min`',
       });
     }
   });
