@@ -123,6 +123,10 @@ export async function GET(
 
     const cityAddress = [order.city, order.address].filter(Boolean).join(' &middot; ');
 
+    // TODO(ORDERZ-XSS-DISPATCH): the HTML below interpolates several free-text
+    // DB fields (site_name, contact_name, phone, address, city, dispatched_by,
+    // item_name, sku, size) without escaping. Wrap them in esc() — see commit
+    // ee694e4 for context. Out of scope for the uniform employee_name feature.
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
