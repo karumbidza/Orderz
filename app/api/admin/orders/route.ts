@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '100');
+    const limit = parseInt(searchParams.get('limit') || '1000');
     const status = searchParams.get('status');
 
     // AUTO-RECEIVE: Check for dispatched orders past their auto-receive date
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     let orders;
     if (status) {
       orders = await sql`
-        SELECT 
+        SELECT
           o.id,
           o.voucher_number,
           o.category,
@@ -53,19 +53,19 @@ export async function GET(request: NextRequest) {
           o.received_at,
           o.received_by,
           o.notes,
-          s.name as site_name,
-          s.city as site_city,
-          s.address as site_address,
+          COALESCE(s.name, '(no site)') as site_name,
+          COALESCE(s.city, '') as site_city,
+          COALESCE(s.address, '') as site_address,
           (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as item_count
         FROM orders o
-        JOIN sites s ON o.site_id = s.id
+        LEFT JOIN sites s ON o.site_id = s.id
         WHERE o.status = ${status}
-        ORDER BY o.order_date DESC
+        ORDER BY o.order_date DESC, o.id DESC
         LIMIT ${limit}
       `;
     } else {
       orders = await sql`
-        SELECT 
+        SELECT
           o.id,
           o.voucher_number,
           o.category,
@@ -78,13 +78,13 @@ export async function GET(request: NextRequest) {
           o.received_at,
           o.received_by,
           o.notes,
-          s.name as site_name,
-          s.city as site_city,
-          s.address as site_address,
+          COALESCE(s.name, '(no site)') as site_name,
+          COALESCE(s.city, '') as site_city,
+          COALESCE(s.address, '') as site_address,
           (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as item_count
         FROM orders o
-        JOIN sites s ON o.site_id = s.id
-        ORDER BY o.order_date DESC
+        LEFT JOIN sites s ON o.site_id = s.id
+        ORDER BY o.order_date DESC, o.id DESC
         LIMIT ${limit}
       `;
     }

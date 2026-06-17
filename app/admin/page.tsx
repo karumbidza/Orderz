@@ -466,7 +466,7 @@ export default function AdminPage() {
   const loadOrders = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/orders?limit=200');
+      const res = await fetch('/api/admin/orders?limit=1000');
       const data = await res.json();
       if (data.success) setOrders(data.data);
       else showMessage('Error: ' + data.error, 'error');
